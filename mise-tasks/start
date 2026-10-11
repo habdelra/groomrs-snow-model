@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Run the service on the host (no watching); the container runs the same entry point"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec node src/server.ts

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Apply eslint and prettier fixes"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+./node_modules/.bin/eslint . --fix
+./node_modules/.bin/prettier --write .

@@ -1,0 +1,25 @@
+# El Colorado, Farellones, Santiago Metropolitan Region, Chile.
+id: el-colorado-cl
+name: El Colorado
+location:
+  country: CL
+  region: Santiago Metropolitan
+  latitude: -33.34917
+  longitude: -70.29222
+  timezone: America/Santiago
+hemisphere: south
+# Metres: 2,430 m base, 3,333 m summit, 903 m vertical (OnTheSnow; the
+# Wikipedia infobox swaps/garbles the top elevation but agrees on 903 m).
+elevationsM:
+  base: 2430
+  summit: 3333
+season:
+  typicalOpening: '06-20'
+  typicalClosing: '09-28'
+  spinupDays: 75
+weather:
+  provider: open-meteo
+  model: ecmwf_ifs025
+sources:
+  - https://en.wikipedia.org/wiki/El_Colorado_(Chile)
+  - https://www.onthesnow.com/chile/el-colorado/ski-resort.html

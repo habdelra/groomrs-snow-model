@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Follow the stack's logs (optionally name a service: snow-model, open-meteo, postgres)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+docker compose logs -f --tail=200 "$@"

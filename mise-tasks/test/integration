@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Integration tests against the running stack (start it with: mise run stack:up)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec node --test --test-concurrency=1 "$@" 'test/integration/**/*.test.ts'

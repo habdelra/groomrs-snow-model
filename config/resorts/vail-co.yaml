@@ -1,0 +1,23 @@
+# Vail Ski Resort, Vail, Colorado, USA.
+id: vail-co
+name: Vail
+location:
+  country: US
+  region: Colorado
+  latitude: 39.639
+  longitude: -106.374
+  timezone: America/Denver
+hemisphere: north
+# Metres: 8,120 ft base, 11,570 ft summit, 3,450 ft vertical.
+elevationsM:
+  base: 2475
+  summit: 3527
+season:
+  typicalOpening: '11-14'
+  typicalClosing: '04-19'
+  spinupDays: 75
+weather:
+  provider: open-meteo
+  model: ecmwf_ifs025
+sources:
+  - https://en.wikipedia.org/wiki/Vail_Ski_Resort

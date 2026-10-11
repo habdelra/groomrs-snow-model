@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Probe Open-Meteo coverage (variables, history reach, forecast reach) for every resort point"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec node scripts/probe-open-meteo.ts "$@"

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Run the service on the host with file watching, against the Compose Postgres and Open-Meteo"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+# Postgres and Open-Meteo from Compose; the snow-model container is left
+# stopped so the host process can take port 8090.
+docker compose up -d --wait postgres open-meteo
+docker compose stop snow-model >/dev/null 2>&1 || true
+if ! command -v snowpack >/dev/null 2>&1; then
+  # Run SNOWPACK from the service image (built if missing).
+  docker image inspect groomrs-snow-model-snow-model >/dev/null 2>&1 || docker compose build snow-model
+  export SNOWPACK_BIN="${SNOWPACK_BIN:-$MISE_PROJECT_ROOT/scripts/snowpack-in-docker.sh}"
+fi
+exec node --watch src/server.ts

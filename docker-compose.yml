@@ -1,0 +1,60 @@
+name: groomrs-snow-model
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '127.0.0.1:${PGPORT_HOST:-5436}:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Self-hosted Open-Meteo reading Open-Meteo's public open-data bucket on
+  # demand. CACHE_SIZE is preallocated on disk up front, so keep it modest.
+  open-meteo:
+    image: ghcr.io/open-meteo/open-meteo:latest
+    restart: unless-stopped
+    environment:
+      REMOTE_DATA_DIRECTORY: https://openmeteo.s3.amazonaws.com/data/
+      CACHE_SIZE: ${OPEN_METEO_CACHE_SIZE:-4GB}
+    ports:
+      - '127.0.0.1:${OPEN_METEO_PORT_HOST:-8080}:8080'
+    volumes:
+      - open-meteo-data:/app/data
+
+  snow-model:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      open-meteo:
+        condition: service_started
+    environment:
+      PORT: 8090
+      DATA_DIR: /data
+      OPEN_METEO_URL: http://open-meteo:8080
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/groomrs_snow_model
+      AUTO_MIGRATE: 'true'
+    ports:
+      - '127.0.0.1:${SNOW_MODEL_PORT_HOST:-8090}:8090'
+    volumes:
+      - snow-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8090/health/live']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+volumes:
+  pg-data:
+  open-meteo-data:
+  snow-data:

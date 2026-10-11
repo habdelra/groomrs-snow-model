@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Type-check with tsc (no emit; Node runs the TypeScript directly)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec ./node_modules/.bin/tsc --noEmit

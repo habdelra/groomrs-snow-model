@@ -1,0 +1,17 @@
+min_version = "2026.9.16"
+
+[tools]
+node = "24.17.0"
+pnpm = "12.7.0"
+
+[env]
+NODE_NO_WARNINGS = "1"
+# Host-side defaults that point at the Compose stack (see docker-compose.yml).
+PGHOST = "127.0.0.1"
+PGPORT = "5436"
+PGUSER = "postgres"
+PGPASSWORD = "postgres"
+PGDATABASE = "groomrs_snow_model"
+OPEN_METEO_URL = "http://127.0.0.1:8080"
+SNOW_MODEL_URL = "http://127.0.0.1:8090"
+DATA_DIR = "{{config_root}}/data"

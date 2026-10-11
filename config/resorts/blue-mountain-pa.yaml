@@ -1,0 +1,26 @@
+# Blue Mountain Resort, Palmerton, Pennsylvania, USA.
+id: blue-mountain-pa
+name: Blue Mountain Resort
+location:
+  country: US
+  region: Pennsylvania
+  latitude: 40.82222
+  longitude: -75.51333
+  timezone: America/New_York
+hemisphere: north
+# Metres. Sources disagree on the summit (1,540 ft infobox vs 1,407 ft body
+# text on Wikipedia; DCSki 325/1,407 ft) but all give a ~1,082 ft (330 m)
+# vertical; the Wikipedia infobox pair is the internally consistent one.
+elevationsM:
+  base: 140
+  summit: 470
+season:
+  typicalOpening: '12-05'
+  typicalClosing: '03-29'
+  spinupDays: 75
+weather:
+  provider: open-meteo
+  model: ecmwf_ifs025
+sources:
+  - https://en.wikipedia.org/wiki/Blue_Mountain_Resort
+  - https://www.dcski.com/resorts/bluemountain

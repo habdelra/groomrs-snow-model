@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Database migrations: up (default) | down [n] | create <name> | create-removal <name> | redo"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+action="${1:-up}"
+case "$action" in
+  create|create-removal) ;;
+  *) node scripts/ensure-db-exists.ts ;;
+esac
+exec ./scripts/migrate.sh "$@"

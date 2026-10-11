@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Unit tests (node:test, no services needed)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+exec node --test "$@" 'test/unit/**/*.test.ts'

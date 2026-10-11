@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Stop the stack (keeps volumes; pass -v to also delete data)"
+set -euo pipefail
+cd "$MISE_PROJECT_ROOT"
+docker compose down "$@"
