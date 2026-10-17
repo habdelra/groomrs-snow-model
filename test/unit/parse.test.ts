@@ -66,15 +66,15 @@ test('parsePro returns surface-first layers that stack to the snow depth', () =>
   }
 });
 
-test('parsePro maps Swiss grain digits to IACS classes, graupel 0 and FCxr 9', () => {
-  // One profile, three elements bottom to top: graupel (000), rounding
-  // faceted particles (990), and faceted crystals with depth hoar (450).
-  // The 0513 line carries one extra value (surface hoar on the surface).
+test('parsePro maps Swiss grain codes to IACS classes', () => {
+  // One profile, five elements bottom to top. The 0513 line carries one
+  // extra value after the elements: 0 when there is no surface hoar, 660
+  // when there is.
   const pro = [
     '[DATA]',
     '0500,01.02.2026 00:00:00',
-    '0501,3,10,20,30',
-    '0513,4,0,990,450,0',
+    '0501,5,10,20,30,40,50',
+    '0513,6,0,6,990,491,450,0',
     '',
   ].join('\n');
   const [profile] = parsePro(pro);
@@ -85,8 +85,10 @@ test('parsePro maps Swiss grain digits to IACS classes, graupel 0 and FCxr 9', (
   ]);
   assert.deepEqual(grains, [
     [450, 'FC', 'DH'],
+    [491, 'FC', 'FCxr'],
     [990, 'FCxr', 'FCxr'],
-    [0, 'PPgp', 'PPgp'],
+    [6, 'MM', 'MM'], // technical snow, F3 = 6
+    [0, 'PPgp', 'PPgp'], // graupel
   ]);
 });
 
