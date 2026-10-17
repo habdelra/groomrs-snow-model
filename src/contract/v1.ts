@@ -93,8 +93,18 @@ export const Layer = z.object({
   sphericity: n('0–1'),
   coordinationNumber: n('bonds per grain'),
   grainTypeCode: n('Swiss F1F2F3 code'),
-  grainTypePrimary: z.string().nullable().describe('IACS class of F1'),
-  grainTypeSecondary: z.string().nullable().describe('IACS class of F2'),
+  grainTypePrimary: z
+    .string()
+    .nullable()
+    .describe(
+      'IACS class of F1, or subclass PPgp/FCxr; MM for dry technical snow',
+    ),
+  grainTypeSecondary: z
+    .string()
+    .nullable()
+    .describe(
+      'IACS class of F2, or subclass PPgp/FCxr; MM for dry technical snow',
+    ),
   handHardnessIndex: n('1 fist … 5 knife, 6 ice'),
   iceVolumePct: n('%'),
   airVolumePct: n('%'),
