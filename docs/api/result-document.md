@@ -99,21 +99,21 @@ All numbers are metric and name their unit (see [Units](overview.md#units)). Fie
 
 ### Forcing (hourly weather)
 
-The hourly weather from Open-Meteo, downscaled to the point's elevation. It has the same fields as [`GET /v1/resorts/:id/weather`](endpoints.md#get-v1resortsidweather) hours.
+The hourly weather from Open-Meteo, adjusted to the point's elevation by Open-Meteo's [statistical downscaling][om-ecmwf]. Each field is one of [Open-Meteo's hourly variables][om-docs], converted to the units shown. It has the same fields as [`GET /v1/resorts/:id/weather`](endpoints.md#get-v1resortsidweather) hours.
 
-| Field                 | Type           | Unit / meaning                                      |
-| --------------------- | -------------- | --------------------------------------------------- |
-| `time`                | string         | Start of the hour, UTC.                             |
-| `airTempC`            | number \| null | Air temperature at 2 m, °C.                         |
-| `relativeHumidityPct` | number \| null | Relative humidity at 2 m, %.                        |
-| `windSpeedMs`         | number \| null | Wind speed at 10 m, m/s.                            |
-| `windDirectionDeg`    | number \| null | Wind direction at 10 m, degrees from north.         |
-| `shortwaveWm2`        | number \| null | Incoming shortwave radiation, W/m².                 |
-| `precipitationMm`     | number \| null | Total precipitation in the hour, mm.                |
-| `rainMm`              | number \| null | Rain in the hour, mm.                               |
-| `snowfallCm`          | number \| null | New snow in the hour as reported by Open-Meteo, cm. |
-| `cloudCoverPct`       | number \| null | Total cloud cover, %.                               |
-| `surfacePressureHpa`  | number \| null | Surface pressure, hPa.                              |
+| Field                 | Type           | Unit / meaning                                                                    |
+| --------------------- | -------------- | --------------------------------------------------------------------------------- |
+| `time`                | string         | UTC. Instant values are at this time; sums and means cover the hour ending at it. |
+| `airTempC`            | number \| null | Air temperature at 2 m, °C.                                                       |
+| `relativeHumidityPct` | number \| null | Relative humidity at 2 m, %.                                                      |
+| `windSpeedMs`         | number \| null | Wind speed at 10 m, m/s.                                                          |
+| `windDirectionDeg`    | number \| null | Wind direction at 10 m, degrees from north.                                       |
+| `shortwaveWm2`        | number \| null | Incoming shortwave radiation, mean over the preceding hour, W/m².                 |
+| `precipitationMm`     | number \| null | Total precipitation over the preceding hour, mm.                                  |
+| `rainMm`              | number \| null | Rain over the preceding hour, mm.                                                 |
+| `snowfallCm`          | number \| null | New snow over the preceding hour as reported by Open-Meteo, cm.                   |
+| `cloudCoverPct`       | number \| null | Total cloud cover, %.                                                             |
+| `surfacePressureHpa`  | number \| null | Surface pressure, hPa.                                                            |
 
 `snowfallCm` is Open-Meteo's own estimate. SNOWPACK decides the precipitation phase itself, so for modelled new snow use `met[].newSnow*Cm`.
 
@@ -121,41 +121,43 @@ The hourly weather from Open-Meteo, downscaled to the point's elevation. It has 
 
 SNOWPACK's hourly output for the point's snow column.
 
-| Field                   | Type           | Unit / meaning                                                          |
-| ----------------------- | -------------- | ----------------------------------------------------------------------- |
-| `time`                  | string         | UTC.                                                                    |
-| `snowDepthCm`           | number \| null | Modelled snow depth, cm.                                                |
-| `sweMm`                 | number \| null | Snow water equivalent, mm.                                              |
-| `surfaceTempC`          | number \| null | Modelled snow (or ground) surface temperature, °C.                      |
-| `airTempC`              | number \| null | Air temperature as SNOWPACK used it, °C.                                |
-| `relativeHumidityPct`   | number \| null | Relative humidity as used, %.                                           |
-| `windSpeedMs`           | number \| null | Wind speed as used, m/s.                                                |
-| `incomingShortwaveWm2`  | number \| null | Incoming shortwave radiation, W/m².                                     |
-| `reflectedShortwaveWm2` | number \| null | Reflected shortwave radiation, W/m².                                    |
-| `incomingLongwaveWm2`   | number \| null | Incoming longwave radiation, W/m². Generated by MeteoIO (not measured). |
-| `outgoingLongwaveWm2`   | number \| null | Outgoing longwave radiation, W/m².                                      |
-| `sensibleHeatWm2`       | number \| null | Sensible heat flux, W/m².                                               |
-| `latentHeatWm2`         | number \| null | Latent heat flux, W/m².                                                 |
-| `groundHeatWm2`         | number \| null | Ground heat flux, W/m².                                                 |
-| `rainEnergyWm2`         | number \| null | Energy supplied by rain, W/m².                                          |
-| `albedoFraction`        | number \| null | Surface albedo, 0–1.                                                    |
-| `liquidWaterMm`         | number \| null | Total liquid water held in the snowpack, mm.                            |
-| `snowfallRateMmPerH`    | number \| null | Snowfall rate, mm/h water equivalent.                                   |
-| `rainRateMmPerH`        | number \| null | Rain rate, mm/h.                                                        |
-| `runoffMm`              | number \| null | Runoff from the bottom of the snowpack, mm.                             |
-| `sublimationMm`         | number \| null | Sublimation, mm.                                                        |
-| `evaporationMm`         | number \| null | Evaporation, mm.                                                        |
-| `newSnow3hCm`           | number \| null | Modelled new snow over the past 3 hours, cm.                            |
-| `newSnow24hCm`          | number \| null | Modelled new snow over the past 24 hours, cm.                           |
-| `newSnow72hCm`          | number \| null | Modelled new snow over the past 72 hours, cm.                           |
-| `precipitation24hMm`    | number \| null | Precipitation over the past 24 hours, mm.                               |
-| `skierPenetrationCm`    | number \| null | Modelled ski penetration depth, cm.                                     |
-| `surfaceHoarSizeMm`     | number \| null | Surface hoar size, mm.                                                  |
-| `coldContentMjM2`       | number \| null | Cold content of the snowpack, MJ/m².                                    |
+| Field                   | Type           | Unit / meaning                                                                                                                                                                                    |
+| ----------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `time`                  | string         | UTC. SNOWPACK writes each row at the end of its time step, so rates and sums cover the hour ending at `time`.                                                                                     |
+| `snowDepthCm`           | number \| null | Modelled snow depth (vertical), cm.                                                                                                                                                               |
+| `sweMm`                 | number \| null | [Snow water equivalent][icssg]: the depth of water the snowpack would give if it melted completely, mm (1 mm = 1 kg/m²).                                                                          |
+| `surfaceTempC`          | number \| null | Modelled snow (or ground, when there's no snow) surface temperature, °C.                                                                                                                          |
+| `airTempC`              | number \| null | Air temperature as SNOWPACK used it, after MeteoIO's gap filling, °C.                                                                                                                             |
+| `relativeHumidityPct`   | number \| null | Relative humidity as SNOWPACK used it, %.                                                                                                                                                         |
+| `windSpeedMs`           | number \| null | Wind speed as SNOWPACK used it, m/s.                                                                                                                                                              |
+| `incomingShortwaveWm2`  | number \| null | Incoming shortwave (solar) radiation, W/m².                                                                                                                                                       |
+| `reflectedShortwaveWm2` | number \| null | Shortwave radiation reflected by the surface, W/m².                                                                                                                                               |
+| `incomingLongwaveWm2`   | number \| null | Incoming longwave (thermal) radiation from the atmosphere, W/m². Not in the weather data: MeteoIO [generates it][meteoio-gen] from air temperature, humidity and cloud cover.                     |
+| `outgoingLongwaveWm2`   | number \| null | Longwave radiation emitted by the snow surface, W/m². Reported as a positive magnitude.                                                                                                           |
+| `sensibleHeatWm2`       | number \| null | Sensible heat flux: heat exchanged between air and surface because of their temperature difference, W/m². **Positive means toward the snow surface** (warm air heating the snow).                 |
+| `latentHeatWm2`         | number \| null | Latent heat flux: energy exchanged through sublimation, evaporation and deposition at the surface, W/m². Same sign convention as `sensibleHeatWm2`.                                               |
+| `groundHeatWm2`         | number \| null | Heat flux from the ground into the base of the snowpack, W/m². Always `0` with the current configuration, which models the snow column without soil.                                              |
+| `rainEnergyWm2`         | number \| null | Heat brought to the surface by rain, W/m².                                                                                                                                                        |
+| `albedoFraction`        | number \| null | Surface albedo: the fraction of incoming shortwave radiation that is reflected, 0–1. Fresh snow is around 0.9; old, wet snow is much lower.                                                       |
+| `liquidWaterMm`         | number \| null | Total [liquid water][icssg] held in the snowpack, mm.                                                                                                                                             |
+| `snowfallRateMmPerH`    | number \| null | Solid precipitation reaching the surface, mm/h water equivalent.                                                                                                                                  |
+| `rainRateMmPerH`        | number \| null | Liquid precipitation, mm/h.                                                                                                                                                                       |
+| `runoffMm`              | number \| null | Meltwater and rain draining out of the base of the snowpack, mm.                                                                                                                                  |
+| `sublimationMm`         | number \| null | Mass lost by sublimation (ice turning directly to vapour), mm water equivalent.                                                                                                                   |
+| `evaporationMm`         | number \| null | Mass lost by evaporation of liquid water, mm.                                                                                                                                                     |
+| `newSnow3hCm`           | number \| null | Modelled height of new snow over the past 3 hours, cm.                                                                                                                                            |
+| `newSnow24hCm`          | number \| null | Modelled height of new snow over the past 24 hours, cm.                                                                                                                                           |
+| `newSnow72hCm`          | number \| null | Modelled height of new snow over the past 72 hours, cm.                                                                                                                                           |
+| `precipitation24hMm`    | number \| null | Precipitation (all phases) over the past 24 hours, mm.                                                                                                                                            |
+| `skierPenetrationCm`    | number \| null | SNOWPACK's estimate of how far a skier sinks into the snow, cm. Deeper means softer, less consolidated snow near the surface.                                                                     |
+| `surfaceHoarSizeMm`     | number \| null | Size of [surface hoar][icssg] crystals on the surface, mm. Surface hoar is feathery frost that grows on the snow on clear, calm nights. `0` when there is none.                                   |
+| `coldContentMjM2`       | number \| null | [Cold content][icssg]: the energy needed to warm the whole snowpack to 0 °C, MJ/m². SNOWPACK reports it as a **negative** number; values near 0 mean the snowpack is close to melting throughout. |
+
+The column names follow SNOWPACK's [fluxes time series][sp-met]. The energy-balance and microstructure model behind them is described in [Bartelt and Lehning (2002)][lehning-1] and [Lehning et al. (2002)][lehning-2].
 
 ### Profiles
 
-Snapshots of the full layer stack every **3 hours** from `window.from` to `window.to` inclusive, so a 48-hour window has 17 profiles.
+Snapshots of the full layer stack, from SNOWPACK's [`.pro` profile output][sp-pro], every **3 hours** from `window.from`, so a 48-hour window has 17 profiles. The last profile is at `window.to` only when `horizonHours` is a multiple of 3. Otherwise it is the last 3-hour step before `window.to`.
 
 | Field         | Type   | Description                                                  |
 | ------------- | ------ | ------------------------------------------------------------ |
@@ -192,42 +194,45 @@ Each layer is one SNOWPACK element. Layers are often well under 1 cm thick near 
 }
 ```
 
-| Field                | Type           | Unit / meaning                                                                  |
-| -------------------- | -------------- | ------------------------------------------------------------------------------- |
-| `topHeightCm`        | number         | Height of the layer's top above the ground, cm.                                 |
-| `thicknessCm`        | number         | Layer thickness, cm.                                                            |
-| `depthCm`            | number         | Depth of the layer's top below the snow surface, cm. `0` for the surface layer. |
-| `densityKgM3`        | number \| null | Density, kg/m³.                                                                 |
-| `temperatureC`       | number \| null | Temperature, °C.                                                                |
-| `liquidWaterPct`     | number \| null | Liquid water content, % by volume.                                              |
-| `ageDays`            | number \| null | Age of the layer's snow, days.                                                  |
-| `grainSizeMm`        | number \| null | Grain size, mm.                                                                 |
-| `bondSizeMm`         | number \| null | Bond size, mm.                                                                  |
-| `dendricity`         | number \| null | Dendricity, 0–1 (1 = fresh, branched crystals).                                 |
-| `sphericity`         | number \| null | Sphericity, 0–1 (1 = rounded).                                                  |
-| `coordinationNumber` | number \| null | Bonds per grain.                                                                |
-| `grainTypeCode`      | number \| null | SNOWPACK's Swiss three-digit grain code F1F2F3 (primary, secondary, marker).    |
-| `grainTypePrimary`   | string \| null | IACS class of the primary grain type (F1). See the table below.                 |
-| `grainTypeSecondary` | string \| null | IACS class of the secondary grain type (F2).                                    |
-| `handHardnessIndex`  | number \| null | Hand hardness: 1 fist, 2 four fingers, 3 one finger, 4 pencil, 5 knife, 6 ice.  |
-| `iceVolumePct`       | number \| null | Ice volume fraction, %.                                                         |
-| `airVolumePct`       | number \| null | Air volume fraction, %.                                                         |
+| Field                | Type           | Unit / meaning                                                                                                                                                                                                       |
+| -------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `topHeightCm`        | number         | Height of the layer's top above the ground, cm.                                                                                                                                                                      |
+| `thicknessCm`        | number         | Layer thickness, cm.                                                                                                                                                                                                 |
+| `depthCm`            | number         | Depth of the layer's top below the snow surface, cm. `0` for the surface layer.                                                                                                                                      |
+| `densityKgM3`        | number \| null | [Density][icssg], kg/m³. New snow is typically 50–150; settled and wind-packed snow 200–400; melt-refrozen snow and ice higher still.                                                                                |
+| `temperatureC`       | number \| null | Snow temperature, °C. `0` means the layer is at the melting point and may hold liquid water.                                                                                                                         |
+| `liquidWaterPct`     | number \| null | [Liquid water content][icssg], % by volume. `0` is dry snow.                                                                                                                                                         |
+| `ageDays`            | number \| null | Time since the layer's snow fell, days.                                                                                                                                                                              |
+| `grainSizeMm`        | number \| null | [Grain size][icssg]: the average size of the snow grains, mm.                                                                                                                                                        |
+| `bondSizeMm`         | number \| null | Size of the ice bonds (necks) between grains, mm. Larger bonds mean a stronger, more sintered layer ([Lehning et al. 2002][lehning-2]).                                                                              |
+| `dendricity`         | number \| null | How much of the original branched crystal shape remains, from 0 (none) to 1 (new snow) ([SNOWPACK][sp-element]).                                                                                                     |
+| `sphericity`         | number \| null | Grain shape, from 0 (angular, faceted) to 1 (rounded) ([SNOWPACK][sp-element]).                                                                                                                                      |
+| `coordinationNumber` | number \| null | Average number of bonds each grain has with its neighbours ([Lehning et al. 2002][lehning-2]).                                                                                                                       |
+| `grainTypeCode`      | number \| null | SNOWPACK's [Swiss three-digit grain code][sp-io] F1F2F3. F1 is the primary grain type, F2 the secondary, and F3 a marker: `0` both types present, `1` F1 with F2 in parentheses, `2` crust ([SNOWPACK][sp-element]). |
+| `grainTypePrimary`   | string \| null | [ICSSG grain shape class][icssg] of the primary grain type (F1). See the table below.                                                                                                                                |
+| `grainTypeSecondary` | string \| null | ICSSG grain shape class of the secondary grain type (F2).                                                                                                                                                            |
+| `handHardnessIndex`  | number \| null | [Hand hardness index][icssg], from the object that can be pushed into the snow with moderate force: 1 fist, 2 four fingers, 3 one finger, 4 pencil, 5 knife, 6 ice (nothing gets in).                                |
+| `iceVolumePct`       | number \| null | Share of the layer's volume that is ice, %.                                                                                                                                                                          |
+| `airVolumePct`       | number \| null | Share of the layer's volume that is air (pore space), %.                                                                                                                                                             |
 
-Grain type classes ([Fierz et al. 2009](https://unesdoc.unesco.org/ark:/48223/pf0000186462), The International Classification for Seasonal Snow on the Ground):
+Grain type classes, from [The International Classification for Seasonal Snow on the Ground][icssg] (ICSSG; Fierz et al. 2009), as mapped from SNOWPACK's [Swiss code][sp-io]:
 
-| Code digit | IACS class | Meaning                    |
-| ---------- | ---------- | -------------------------- |
-| 1          | `PP`       | Precipitation particles    |
-| 2          | `DF`       | Decomposing and fragmented |
-| 3          | `RG`       | Rounded grains             |
-| 4          | `FC`       | Faceted crystals           |
-| 5          | `DH`       | Depth hoar                 |
-| 6          | `SH`       | Surface hoar               |
-| 7          | `MF`       | Melt forms                 |
-| 8          | `IF`       | Ice formations             |
-| 9          | `PPgp`     | Graupel                    |
+| Code digit | IACS class | Meaning                                                  |
+| ---------- | ---------- | -------------------------------------------------------- |
+| 1          | `PP`       | Precipitation particles                                  |
+| 2          | `DF`       | Decomposing and fragmented                               |
+| 3          | `RG`       | Rounded grains                                           |
+| 4          | `FC`       | Faceted crystals                                         |
+| 5          | `DH`       | Depth hoar                                               |
+| 6          | `SH`       | Surface hoar                                             |
+| 7          | `MF`       | Melt forms                                               |
+| 8          | `IF`       | Ice formations                                           |
+| 9          | `PPgp` ⚠   | Rounding faceted particles (FCxr) in SNOWPACK; see below |
+| 0          | `null` ⚠   | Graupel (PPgp) in SNOWPACK; see below                    |
 
 For example, `grainTypeCode` `240` is primary `DF`, secondary `FC`, marker `0`.
+
+> **Known issue (digits 9 and 0).** SNOWPACK's Swiss code uses 9 for rounding faceted particles (FCxr) and 0 for graupel (PPgp). The service currently labels digit 9 as `PPgp` and returns `null` for digit 0. Until that is fixed, read the digits of `grainTypeCode` directly rather than relying on `grainTypePrimary`/`grainTypeSecondary` for those two types. The fix will change those two labels to match SNOWPACK.
 
 ### `files`
 
@@ -258,4 +263,15 @@ For example, `grainTypeCode` `240` is primary `DF`, secondary `FC`, marker `0`.
 | `missingHours` | integer | Hours with no value.                            |
 | `totalHours`   | integer | Hours in the window.                            |
 
-Small gaps are tolerated: SNOWPACK's MeteoIO fills them. If more than 10% of hours are missing for air temperature, humidity, wind speed, shortwave radiation or precipitation, the job is `blocked` with `weather_coverage` instead of producing a result.
+`dataGaps` covers the forecast window only. Small gaps are tolerated: SNOWPACK's MeteoIO fills them. If more than 10% of hours are missing for air temperature, humidity, wind speed, shortwave radiation or precipitation, the job is `blocked` with `weather_coverage` instead of producing a result. That check also applies to the advance from the checkpoint, so a refresh can be blocked by a gap that would never show up in `dataGaps`.
+
+[icssg]: https://cryosphericsciences.org/publications/snow-classification/ 'Fierz et al. (2009), The International Classification for Seasonal Snow on the Ground, UNESCO-IHP'
+[sp-io]: https://snowpack.slf.ch/doc-release/html/snowpackio.html 'SNOWPACK data formats'
+[sp-met]: https://snowpack.slf.ch/doc-release/html/met_format.html 'SNOWPACK fluxes time series'
+[sp-pro]: https://snowpack.slf.ch/doc-release/html/pro_format.html 'SNOWPACK PRO profiles time series'
+[sp-element]: https://snowpack.slf.ch/doc-release/html/classElementData.html 'SNOWPACK ElementData: per-layer properties'
+[meteoio-gen]: https://meteoio.slf.ch/doc-release/html/generators.html 'MeteoIO data generators'
+[lehning-1]: https://doi.org/10.1016/S0165-232X%2802%2900074-5 'Bartelt and Lehning (2002), A physical SNOWPACK model for the Swiss avalanche warning, Part I: numerical model'
+[lehning-2]: https://doi.org/10.1016/S0165-232X%2802%2900073-3 'Lehning et al. (2002), A physical SNOWPACK model for the Swiss avalanche warning, Part II: snow microstructure'
+[om-docs]: https://open-meteo.com/en/docs 'Open-Meteo weather forecast API: hourly variables'
+[om-ecmwf]: https://open-meteo.com/en/docs/ecmwf-api 'Open-Meteo ECMWF API'

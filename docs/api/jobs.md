@@ -50,9 +50,20 @@ Every job request carries an `idempotencyKey`. It makes `POST`s safe to retry:
 
 Keys are **global** across resorts, seasons and job kinds, so include all of them in the key, for example `refresh/vail-co/2026-02-03`.
 
-"Same request" means the same job kind, resort, season and **request body as sent**, compared field by field (key order doesn't matter). Defaults aren't filled in before comparing. A body that omits `horizonHours` and one that sends `"horizonHours": 168` are different requests, even though they do the same work. Send the same body every time you retry.
+"Same request" means the same job kind, resort, season and **request body as sent**, compared value by value (key order doesn't matter). Nothing is normalized before comparing:
+
+- Defaults aren't filled in. A body that omits `horizonHours` and one that sends `"horizonHours": 168` are different requests, even though they do the same work.
+- Times are compared as strings. `"2026-02-03T06:00:00Z"` and `"2026-02-03T06:00:00.000Z"` are different requests.
+- Unknown fields are accepted without error, but they count. Adding `"note": "retry"` to a retried body makes it a different request.
+
+Send exactly the same body every time you retry.
 
 If you omit `asOf`, it is resolved to the time the job is first created, and retries with the same key return that original job. To get a fresh run, use a new key.
+
+A refresh without `asOf` also takes its season from the current time. At a season boundary (1 July for northern resorts, 1 January for southern ones):
+
+- A retry with the same key and body gets `409`, because the request now resolves to a different season.
+- New refreshes are `blocked` with `not_initialized` until the new season has been initialized.
 
 Because a finished job is returned as is, retrying a `blocked` or `failed` job needs a **new** key once the cause is fixed.
 
@@ -70,12 +81,12 @@ A `blocked` job has an `error` like this:
 }
 ```
 
-| `reason`           | Job kind   | Cause                                                                                                                                                                                    | What to do                                                                                      |
-| ------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `not_initialized`  | refresh    | No usable saved state: the season was never initialized, the initialize job hasn't completed, it was done under an older `configVersion`, or its checkpoints are all after `asOf`'s day. | Initialize the season (with an `asOf` on or before the refresh's), then refresh with a new key. |
-| `before_spinup`    | initialize | `asOf`'s UTC day is not after the spin-up start (typical opening minus `spinupDays`), so there is nothing to spin up.                                                                    | Use a later `asOf` or a larger `spinupDays`.                                                    |
-| `weather_coverage` | either     | More than 10% of hours are missing for a required weather variable (air temperature, humidity, wind speed, shortwave or precipitation). `error.details` lists the gaps.                  | Usually an upstream data hole. Try a different window, or wait for the data.                    |
-| `unknown_resort`   | either     | The resort was removed from configuration after the job was created.                                                                                                                     | None; the resort no longer exists.                                                              |
+| `reason`           | Job kind   | Cause                                                                                                                                                                                                                                                                       | What to do                                                                                      |
+| ------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `not_initialized`  | refresh    | No usable saved state: the season was never initialized, the initialize job hasn't completed, it was done under an older `configVersion`, or its checkpoints are all after `asOf`'s day.                                                                                    | Initialize the season (with an `asOf` on or before the refresh's), then refresh with a new key. |
+| `before_spinup`    | initialize | `asOf`'s UTC day is not after the spin-up start (typical opening minus `spinupDays`), so there is nothing to spin up.                                                                                                                                                       | Use a later `asOf` or a larger `spinupDays`.                                                    |
+| `weather_coverage` | either     | More than 10% of hours are missing for a required weather variable (air temperature, humidity, wind speed, shortwave or precipitation) in any period being simulated: the spin-up, the advance from the checkpoint, or the forecast window. `error.details` lists the gaps. | Usually an upstream data hole. Try a different window, or wait for the data.                    |
+| `unknown_resort`   | either     | The resort was removed from configuration after the job was created.                                                                                                                                                                                                        | None; the resort no longer exists.                                                              |
 
 For `weather_coverage`, `error.details` is an array:
 

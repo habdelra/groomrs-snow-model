@@ -90,9 +90,9 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 | 0515 / 0516 | ice / air volume %                                               |
 | 0534        | hand hardness, written **negated**; we take the absolute value   |
 
-We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 PPgp.
+We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF. **Known bug:** `GRAIN_CLASS` in `parse.ts` maps 9 to `PPgp` and has no entry for 0. In SLF's Swiss code, 9 is FCxr (rounding faceted particles) and 0 is PPgp (graupel). See the [SNOWPACK data formats](https://snowpack.slf.ch/doc-release/html/snowpackio.html) grain table. `docs/api/result-document.md` flags this as a known issue for clients, so remove that note when you fix the mapping.
 
-Adding or changing a `met` or layer field changes the contract clients read. Document it, with its unit, in `docs/api/result-document.md` (see the `api-docs` skill).
+Adding or changing a `met` or layer field changes the contract clients read. Document it in `docs/api/result-document.md`, with its unit, a plain-language meaning and a source link. The same applies to changes in how refresh picks and advances checkpoints (`jobs.md`, `endpoints.md`) and to the `weather_coverage` rules in `point-run.ts` (`jobs.md`, `result-document.md`). See the `api-docs` skill.
 
 ## State, checkpoints and lineages (src/jobs/model.ts)
 

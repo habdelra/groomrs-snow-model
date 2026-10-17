@@ -41,7 +41,7 @@ Example `409`:
 ```json
 {
   "error": "idempotency_conflict",
-  "message": "idempotency key vail-2025-26-init was already used for a different request (job 9465f067-3c87-4485-bb32-0d1af5c3fd6c)",
+  "message": "idempotency key initialize/vail-co/2025-26 was already used for a different request (job 9465f067-3c87-4485-bb32-0d1af5c3fd6c)",
   "details": { "jobId": "9465f067-3c87-4485-bb32-0d1af5c3fd6c" }
 }
 ```

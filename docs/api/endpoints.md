@@ -57,13 +57,21 @@ Reports whether the service can do work: SNOWPACK is installed, Open-Meteo answe
 
 Liveness only: answers as long as the process is up, without checking dependencies.
 
+**Response** `200`
+
 ```json
 { "ok": true }
 ```
 
+| Field | Type    | Description                                                 |
+| ----- | ------- | ----------------------------------------------------------- |
+| `ok`  | boolean | Always `true`. Any response at all means the process is up. |
+
 ## `GET /v1/schema`
 
-Returns the JSON Schema (draft 2020-12) of the v1 contract, generated from the same definitions the service validates against. Use it to generate client types or validate responses.
+Returns [JSON Schema](https://json-schema.org/draft/2020-12) (draft 2020-12) for the two job request bodies and the result document, generated from the same definitions the service validates against. Use it to generate client types or to validate result documents.
+
+It does **not** cover the other response bodies (resorts, weather, jobs, health, errors). Those are described only in these documents.
 
 ```json
 {
@@ -77,6 +85,13 @@ Returns the JSON Schema (draft 2020-12) of the v1 contract, generated from the s
   "resultDocument": { "…": "…" }
 }
 ```
+
+| Field               | Type   | Description                                                                                         |
+| ------------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| `schemaVersion`     | string | Contract version, `groomrs-snow-model/v1`.                                                          |
+| `initializeRequest` | object | JSON Schema of the [initialize](#post-v1resortsidseasonsseasoninitialize) request body.             |
+| `refreshRequest`    | object | JSON Schema of the [refresh](#post-v1resortsidrefresh) request body, with `horizonHours`'s default. |
+| `resultDocument`    | object | JSON Schema of the [result document](result-document.md).                                           |
 
 ## `GET /v1/resorts`
 
@@ -95,6 +110,10 @@ Lists every configured resort.
   ]
 }
 ```
+
+| Field     | Type  | Description                                                                                                          |
+| --------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| `resorts` | array | Every configured resort, ordered by id. Each entry has the same fields as [`GET /v1/resorts/:id`](#get-v1resortsid). |
 
 ## `GET /v1/resorts/:id`
 
@@ -166,13 +185,15 @@ Returns the hourly weather the model would use for one point, normalized to metr
 
 **Query parameters**
 
-| Name    | Default                      | Description                                                               |
-| ------- | ---------------------------- | ------------------------------------------------------------------------- |
-| `point` | the resort's first point     | One of the resort's point ids.                                            |
-| `start` | start of the current UTC day | ISO-8601 UTC. Rounded down to the hour.                                   |
-| `end`   | `start` + 72 hours           | ISO-8601 UTC, **inclusive**. Rounded down to the hour. Must be ≥ `start`. |
+| Name    | Default                      | Description                                                                                                          |
+| ------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `point` | the resort's first point     | One of the resort's point ids.                                                                                       |
+| `start` | start of the current UTC day | A time, preferably ISO-8601 UTC. Rounded down to the hour. See [Times](overview.md#times) for what else is accepted. |
+| `end`   | `start` + 72 hours           | A time, **inclusive**. Rounded down to the hour. Must be ≥ `start`.                                                  |
 
-The window may span at most **744 hours (31 days)**. It can reach into the future as far as the forecast goes: 14 days from the start of the current UTC day.
+`end` minus `start` may be at most **744 hours (31 days)**. This is checked before rounding, so a window can return up to 745 hours. The window can reach as far into the future as the forecast goes: 14 days from the start of the current UTC day.
+
+The first request for a month that isn't cached yet fetches it from Open-Meteo and can take noticeably longer.
 
 **Example**
 
@@ -207,7 +228,15 @@ curl -s 'http://127.0.0.1:8090/v1/resorts/vail-co/weather?point=summit&start=202
 }
 ```
 
-`hours` has one entry per hour from `start` to `end` inclusive, so the example above returns three hours and the default window returns 73. Each entry has the same fields as [`forcing`](result-document.md#forcing-hourly-weather) in a result document. `retrievedAt` is the oldest retrieval time among the cached responses used.
+| Field              | Type   | Description                                                                                                                                                                                                            |
+| ------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resortId`         | string | Resort id.                                                                                                                                                                                                             |
+| `point.id`         | string | The point the weather is for: `base`, `mid` or `summit`.                                                                                                                                                               |
+| `point.elevationM` | number | The point's elevation, m. Open-Meteo adjusts the weather to this elevation with [statistical downscaling](https://open-meteo.com/en/docs/ecmwf-api), so the summit is colder than the base even in the same grid cell. |
+| `provider`         | string | Always `open-meteo`.                                                                                                                                                                                                   |
+| `model`            | string | Open-Meteo weather model, for example `ecmwf_ifs025` ([ECMWF IFS 0.25°](https://open-meteo.com/en/docs/ecmwf-api)).                                                                                                    |
+| `retrievedAt`      | string | When the weather was fetched from Open-Meteo. If the window spans several cached months, the oldest of their retrieval times.                                                                                          |
+| `hours`            | array  | One entry per hour from `start` to `end` inclusive, so the example returns 3 and the default window 73. Each entry has the fields of [`forcing`](result-document.md#forcing-hourly-weather) in a result document.      |
 
 **Errors**
 
@@ -232,7 +261,7 @@ Creates an **initialize** job: a seasonal spin-up from bare ground through the s
 
 ```json
 {
-  "idempotencyKey": "vail-2025-26-init",
+  "idempotencyKey": "initialize/vail-co/2025-26",
   "asOf": "2026-02-01T12:00:00Z",
   "spinupDays": 30
 }
@@ -249,7 +278,7 @@ Creates an **initialize** job: a seasonal spin-up from bare ground through the s
 - `202 Accepted`: a new job was created.
 - `200 OK`: a job with this `idempotencyKey` and the same request already exists; it is returned unchanged.
 
-Both carry a `Location: /v1/jobs/<jobId>` header and this body:
+Both carry a `Location: /v1/jobs/<jobId>` header (the URL to poll) and this body:
 
 ```json
 {
@@ -273,7 +302,13 @@ Both carry a `Location: /v1/jobs/<jobId>` header and this body:
 }
 ```
 
-`job` has the same shape as [`GET /v1/jobs/:id`](#get-v1jobsid). An initialize job never produces a result document, so its `resultId` stays `null`.
+| Field     | Type          | Description                                                                                                                              |
+| --------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `jobId`   | string (UUID) | The job's id. Poll [`GET /v1/jobs/:id`](#get-v1jobsid) with it.                                                                          |
+| `created` | boolean       | `true` if this request created the job (`202`). `false` if an existing job with the same idempotency key was returned (`200`).           |
+| `job`     | object        | The job as it is now, with the same fields as [`GET /v1/jobs/:id`](#get-v1jobsid). When `created` is `false` it may already be finished. |
+
+An initialize job never produces a result document, so its `resultId` stays `null`.
 
 **Errors**
 
@@ -299,7 +334,7 @@ When the job completes, its `resultId` names the [result document](result-docume
 
 ```json
 {
-  "idempotencyKey": "vail-2026-02-03",
+  "idempotencyKey": "refresh/vail-co/2026-02-03",
   "asOf": "2026-02-03T06:00:00Z",
   "horizonHours": 48
 }
@@ -371,15 +406,15 @@ If the season was never initialized (or was initialized under an older `configVe
 
 ## `GET /v1/results/:id`
 
-Returns a [result document](result-document.md).
+Returns a [result document](result-document.md). Its fields are described there, because the document is large enough to need its own page.
 
 **Path parameters**: `id`, the result id (UUID), from a completed refresh job's `resultId`.
 
 **Query parameters**
 
-| Name             | Description                                                                                                                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `profileDepthCm` | Optional non-negative number. Keeps only profile layers whose **top** lies within this many cm of the snow surface (`layer.depthCm <= profileDepthCm`). Everything else in the document is unchanged. |
+| Name             | Description                                                                                                                                                                                                                                                                               |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profileDepthCm` | Optional non-negative number. Keeps only profile layers whose **top** lies within this many cm of the snow surface (`layer.depthCm <= profileDepthCm`). Everything else in the document is unchanged. An empty value (`?profileDepthCm=`) counts as `0` and keeps only the surface layer. |
 
 Full documents are large, mostly because of the profiles. A 48-hour, three-point Vail result in mid-winter is about 2 MB in full, 0.9 MB with `profileDepthCm=20` and 0.3 MB with `profileDepthCm=5`. A 168-hour result is about 3.5 times larger. Pass `profileDepthCm` if you only need the near-surface layers.
 
@@ -400,7 +435,7 @@ Returns the most recently created result document for a resort, across all seaso
 
 ## `GET /v1/runs/:runId/files/*path`
 
-Downloads a native file from a single SNOWPACK run, for debugging or for tools that read SNOWPACK formats directly. Each point in a result document lists its run's id and file names under `files`:
+Downloads a native file from a single SNOWPACK run, for debugging or for tools that read SNOWPACK formats directly. The formats are documented by SLF in [SNOWPACK data formats](https://snowpack.slf.ch/doc-release/html/snowpackio.html). Each point in a result document lists its run's id and file names under `files`:
 
 ```json
 "files": {
@@ -417,15 +452,18 @@ curl -s http://127.0.0.1:8090/v1/runs/f5e683d4-3086-402f-8bea-5b85ac617847/files
 
 **Response** `200`, `content-type: text/plain; charset=utf-8`, with the file's contents. These files are in SNOWPACK's **native SI units** (K, m, fractions), not the API's metric units.
 
-| File                      | Contents                                             |
-| ------------------------- | ---------------------------------------------------- |
-| `io.ini`                  | The SNOWPACK/MeteoIO configuration used for the run. |
-| `input/<POINT>.smet`      | Weather forcing in SMET format.                      |
-| `input/<POINT>.sno`       | The initial snowpack state.                          |
-| `output/<POINT>_run.smet` | SNOWPACK's time series output.                       |
-| `output/<POINT>_run.pro`  | Snow profiles.                                       |
-| `output/<POINT>_run.sno`  | The final snowpack state.                            |
-| `output/<POINT>_run.haz`  | Hazard output.                                       |
+| File                                         | Contents                                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `io.ini`                                     | The SNOWPACK and [MeteoIO](https://meteoio.slf.ch/doc-release/html/index.html) configuration used for the run.            |
+| `input/<POINT>.smet`                         | Weather forcing in [SMET](https://meteoio.slf.ch/doc-release/html/smetio.html), MeteoIO's plain-text station data format. |
+| `input/<POINT>.sno`                          | The initial snowpack state ([`.sno` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                   |
+| `output/<POINT>_run.smet`                    | SNOWPACK's hourly time series ([fluxes time series](https://snowpack.slf.ch/doc-release/html/met_format.html)).           |
+| `output/<POINT>_run.pro`                     | Snow profiles ([`.pro` format](https://snowpack.slf.ch/doc-release/html/pro_format.html)).                                |
+| `output/<POINT>_run.sno`                     | The final snowpack state.                                                                                                 |
+| `output/<POINT>_run.haz`                     | SNOWPACK's hazard output ([`.haz` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                     |
+| `output/<POINT>_run.ini`                     | The complete configuration as SNOWPACK resolved it, defaults included.                                                    |
+| `weather-sources.json`                       | The Open-Meteo requests whose responses went into the forcing, with their retrieval times. Not listed in `names`.         |
+| `snowpack.stdout.log`, `snowpack.stderr.log` | SNOWPACK's console output, for debugging a failed run. Not listed in `names`.                                             |
 
 `<POINT>` is the point id in upper case (`BASE`, `MID`, `SUMMIT`).
 

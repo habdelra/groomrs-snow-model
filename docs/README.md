@@ -10,4 +10,4 @@ These documents are for clients of the snow-model HTTP API (contract `groomrs-sn
 | [Result document](api/result-document.md) | Field-by-field reference for the forecast result: forcing, SNOWPACK series, layer profiles. |
 | [Errors](api/errors.md)                   | Error body shape and every error code the API returns.                                      |
 
-The machine-readable contract is served by the API itself at [`GET /v1/schema`](api/endpoints.md#get-v1schema) as JSON Schema, generated from `src/contract/v1.ts`.
+[`GET /v1/schema`](api/endpoints.md#get-v1schema) serves JSON Schema for the job request bodies and the result document, generated from `src/contract/v1.ts`. Other response bodies are described only in these documents.

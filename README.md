@@ -103,7 +103,7 @@ All numbers are metric, and every numeric field names its unit (`airTempC`, `sno
 | `GET /v1/results/:id`, `GET /v1/resorts/:id/results/latest` | The result document. `?profileDepthCm=N` keeps only layers within N cm of the surface.                                                                                             |
 | `GET /v1/runs/:runId/files/<path>`                          | Native files from a run: `io.ini`, `input/*.smet`, `output/*.pro` and so on.                                                                                                       |
 
-Jobs are idempotent: reposting the same body with the same `idempotencyKey` returns the existing job, and reusing a key for a different body is a `409`. A job is `blocked` when it can't proceed until something changes: `not_initialized`, `before_spinup` or `weather_coverage`.
+Jobs are idempotent: reposting the same body with the same `idempotencyKey` returns the existing job, and reusing a key for a different body is a `409`. A job is `blocked` when it can't proceed until something changes: `not_initialized`, `before_spinup`, `weather_coverage` or `unknown_resort`.
 
 A result document holds, for each point:
 
