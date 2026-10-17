@@ -194,45 +194,53 @@ Each layer is one SNOWPACK element. Layers are often well under 1 cm thick near 
 }
 ```
 
-| Field                | Type           | Unit / meaning                                                                                                                                                                                                       |
-| -------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `topHeightCm`        | number         | Height of the layer's top above the ground, cm.                                                                                                                                                                      |
-| `thicknessCm`        | number         | Layer thickness, cm.                                                                                                                                                                                                 |
-| `depthCm`            | number         | Depth of the layer's top below the snow surface, cm. `0` for the surface layer.                                                                                                                                      |
-| `densityKgM3`        | number \| null | [Density][icssg], kg/m³. New snow is typically 50–150; settled and wind-packed snow 200–400; melt-refrozen snow and ice higher still.                                                                                |
-| `temperatureC`       | number \| null | Snow temperature, °C. `0` means the layer is at the melting point and may hold liquid water.                                                                                                                         |
-| `liquidWaterPct`     | number \| null | [Liquid water content][icssg], % by volume. `0` is dry snow.                                                                                                                                                         |
-| `ageDays`            | number \| null | Time since the layer's snow fell, days.                                                                                                                                                                              |
-| `grainSizeMm`        | number \| null | [Grain size][icssg]: the average size of the snow grains, mm.                                                                                                                                                        |
-| `bondSizeMm`         | number \| null | Size of the ice bonds (necks) between grains, mm. Larger bonds mean a stronger, more sintered layer ([Lehning et al. 2002][lehning-2]).                                                                              |
-| `dendricity`         | number \| null | How much of the original branched crystal shape remains, from 0 (none) to 1 (new snow) ([SNOWPACK][sp-element]).                                                                                                     |
-| `sphericity`         | number \| null | Grain shape, from 0 (angular, faceted) to 1 (rounded) ([SNOWPACK][sp-element]).                                                                                                                                      |
-| `coordinationNumber` | number \| null | Average number of bonds each grain has with its neighbours ([Lehning et al. 2002][lehning-2]).                                                                                                                       |
-| `grainTypeCode`      | number \| null | SNOWPACK's [Swiss three-digit grain code][sp-io] F1F2F3. F1 is the primary grain type, F2 the secondary, and F3 a marker: `0` both types present, `1` F1 with F2 in parentheses, `2` crust ([SNOWPACK][sp-element]). |
-| `grainTypePrimary`   | string \| null | [ICSSG grain shape class][icssg] of the primary grain type (F1). See the table below.                                                                                                                                |
-| `grainTypeSecondary` | string \| null | ICSSG grain shape class of the secondary grain type (F2).                                                                                                                                                            |
-| `handHardnessIndex`  | number \| null | [Hand hardness index][icssg], from the object that can be pushed into the snow with moderate force: 1 fist, 2 four fingers, 3 one finger, 4 pencil, 5 knife, 6 ice (nothing gets in).                                |
-| `iceVolumePct`       | number \| null | Share of the layer's volume that is ice, %.                                                                                                                                                                          |
-| `airVolumePct`       | number \| null | Share of the layer's volume that is air (pore space), %.                                                                                                                                                             |
+| Field                | Type           | Unit / meaning                                                                                                                                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `topHeightCm`        | number         | Height of the layer's top above the ground, cm.                                                                                                                                                                                                                     |
+| `thicknessCm`        | number         | Layer thickness, cm.                                                                                                                                                                                                                                                |
+| `depthCm`            | number         | Depth of the layer's top below the snow surface, cm. `0` for the surface layer.                                                                                                                                                                                     |
+| `densityKgM3`        | number \| null | [Density][icssg], kg/m³. New snow is typically 50–150; settled and wind-packed snow 200–400; melt-refrozen snow and ice higher still.                                                                                                                               |
+| `temperatureC`       | number \| null | Snow temperature, °C. `0` means the layer is at the melting point and may hold liquid water.                                                                                                                                                                        |
+| `liquidWaterPct`     | number \| null | [Liquid water content][icssg], % by volume. `0` is dry snow.                                                                                                                                                                                                        |
+| `ageDays`            | number \| null | Time since the layer's snow fell, days.                                                                                                                                                                                                                             |
+| `grainSizeMm`        | number \| null | [Grain size][icssg]: the average size of the snow grains, mm.                                                                                                                                                                                                       |
+| `bondSizeMm`         | number \| null | Size of the ice bonds (necks) between grains, mm. Larger bonds mean a stronger, more sintered layer ([Lehning et al. 2002][lehning-2]).                                                                                                                             |
+| `dendricity`         | number \| null | How much of the original branched crystal shape remains, from 0 (none) to 1 (new snow) ([SNOWPACK][sp-element]).                                                                                                                                                    |
+| `sphericity`         | number \| null | Grain shape, from 0 (angular, faceted) to 1 (rounded) ([SNOWPACK][sp-element]).                                                                                                                                                                                     |
+| `coordinationNumber` | number \| null | Average number of bonds each grain has with its neighbours ([Lehning et al. 2002][lehning-2]).                                                                                                                                                                      |
+| `grainTypeCode`      | number \| null | SNOWPACK's [Swiss three-digit grain code][sp-io] F1F2F3: F1·100 + F2·10 + F3. F1 is the primary grain type and F2 the secondary. F3 is a marker: `2` means a melt-freeze crust (so `772` is MFcr) and `6` technical snow. SLF doesn't document the other F3 values. |
+| `grainTypePrimary`   | string \| null | [ICSSG][icssg] grain shape class of the primary grain type (F1), or its subclass for PPgp and FCxr. See the table below.                                                                                                                                            |
+| `grainTypeSecondary` | string \| null | The same, for the secondary grain type (F2).                                                                                                                                                                                                                        |
+| `handHardnessIndex`  | number \| null | [Hand hardness index][icssg], from the object that can be pushed into the snow with moderate force: 1 fist, 2 four fingers, 3 one finger, 4 pencil, 5 knife, 6 ice (nothing gets in).                                                                               |
+| `iceVolumePct`       | number \| null | Share of the layer's volume that is ice, %.                                                                                                                                                                                                                         |
+| `airVolumePct`       | number \| null | Share of the layer's volume that is air (pore space), %.                                                                                                                                                                                                            |
 
-Grain type classes, from [The International Classification for Seasonal Snow on the Ground][icssg] (ICSSG; Fierz et al. 2009), as mapped from SNOWPACK's [Swiss code][sp-io]:
+Grain types follow [The International Classification for Seasonal Snow on the Ground][icssg] (ICSSG; Fierz et al. 2009), mapped from the digits of SNOWPACK's [Swiss code][sp-io]:
 
-| Code digit | IACS class | Meaning                                                  |
-| ---------- | ---------- | -------------------------------------------------------- |
-| 1          | `PP`       | Precipitation particles                                  |
-| 2          | `DF`       | Decomposing and fragmented                               |
-| 3          | `RG`       | Rounded grains                                           |
-| 4          | `FC`       | Faceted crystals                                         |
-| 5          | `DH`       | Depth hoar                                               |
-| 6          | `SH`       | Surface hoar                                             |
-| 7          | `MF`       | Melt forms                                               |
-| 8          | `IF`       | Ice formations                                           |
-| 9          | `PPgp` ⚠   | Rounding faceted particles (FCxr) in SNOWPACK; see below |
-| 0          | `null` ⚠   | Graupel (PPgp) in SNOWPACK; see below                    |
+| Code digit | Value  | Meaning                                                                                                                 |
+| ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 1          | `PP`   | Precipitation particles                                                                                                 |
+| 2          | `DF`   | Decomposing and fragmented precipitation particles                                                                      |
+| 3          | `RG`   | Rounded grains                                                                                                          |
+| 4          | `FC`   | Faceted crystals                                                                                                        |
+| 5          | `DH`   | Depth hoar                                                                                                              |
+| 6          | `SH`   | Surface hoar                                                                                                            |
+| 7          | `MF`   | Melt forms                                                                                                              |
+| 8          | `IF`   | Ice formations                                                                                                          |
+| 9          | `FCxr` | Rounding faceted particles, a subclass of FC. Common in mid-winter: `990`, `951`, `491`.                                |
+| 0          | `PPgp` | Graupel, a subclass of PP. SNOWPACK writes graupel as `000`, but the SNOWPACK version in use (3.7.0) never produces it. |
 
-For example, `grainTypeCode` `240` is primary `DF`, secondary `FC`, marker `0`.
+If F3 is `6` (code `006`, technical snow), both values are `MM`, ICSSG's machine-made snow class. That can't happen while results model natural snow only (`scenario: "natural"`).
 
-> **Known issue (digits 9 and 0).** SNOWPACK's Swiss code uses 9 for rounding faceted particles (FCxr) and 0 for graupel (PPgp). The service currently labels digit 9 as `PPgp` and returns `null` for digit 0. Until that is fixed, read the digits of `grainTypeCode` directly rather than relying on `grainTypePrimary`/`grainTypeSecondary` for those two types. The fix will change those two labels to match SNOWPACK.
+Examples:
+
+- `240` is primary `DF`, secondary `FC`.
+- `491` is `FC`, `FCxr`.
+- `772` is `MF`, `MF`, with F3 = 2: a melt-freeze crust.
+
+Clients that group by the main ICSSG class can take the first two letters of the value (`FCxr` → `FC`, `PPgp` → `PP`).
+
+> **Results generated before the grain-type fix ([#5](https://github.com/habdelra/groomrs-snow-model/pull/5))** labelled digit 9 as `PPgp` and digit 0 as `null`. Those documents stay on disk unchanged, and their `configVersion` and `schemaVersion` are the same as newer ones. If you keep old results, derive the class from `grainTypeCode` and the table above rather than from `grainTypePrimary`/`grainTypeSecondary`.
 
 ### `files`
 
