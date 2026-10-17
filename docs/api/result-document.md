@@ -240,8 +240,6 @@ Examples:
 
 Clients that group by the main ICSSG class can take the first two letters of the value (`FCxr` → `FC`, `PPgp` → `PP`).
 
-> **Results generated before the grain-type fix ([#5](https://github.com/habdelra/groomrs-snow-model/pull/5))** labelled digit 9 as `PPgp` and digit 0 as `null`. Those documents stay on disk unchanged, and their `configVersion` and `schemaVersion` are the same as newer ones. If you keep old results, derive the class from `grainTypeCode` and the table above rather than from `grainTypePrimary`/`grainTypeSecondary`.
-
 ### `files`
 
 | Field   | Type          | Description                                                                                                              |
