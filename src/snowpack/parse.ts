@@ -185,9 +185,11 @@ export interface Profile {
   layers: Layer[];
 }
 
-// Swiss grain code digit → IACS (Fierz et al. 2009) class. SNOWPACK builds
-// the code as F1*100 + F2*10 + F3 (ElementData::snowType in DataClasses.cc):
-// graupel is 000 and rounding faceted particles use 9.
+// Swiss grain code digit → IACS (Fierz et al. 2009) class, or the subclass
+// for PPgp and FCxr. SNOWPACK builds the code as F1*100 + F2*10 + F3
+// (ElementData::snowType in DataClasses.cc). Rounding faceted particles use 9
+// (990, 951, 491 are common). Graupel is 000, though SNOWPACK 3.7.0 never sets
+// it. Technical snow is 006 and is handled by its F3 marker below.
 const GRAIN_CLASS: Record<string, string> = {
   '0': 'PPgp',
   '1': 'PP',
@@ -252,6 +254,8 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
     const digits =
       code === null ? '' : String(Math.trunc(code)).padStart(3, '0');
     const hardness = at('0534', i);
+    // F3 = 6 marks technical (machine-made) snow, written as 006.
+    const technical = digits[2] === '6';
     return {
       topHeightCm: round(top),
       thicknessCm: round(top - below),
@@ -266,8 +270,12 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
       sphericity: at('0509', i),
       coordinationNumber: at('0510', i),
       grainTypeCode: code,
-      grainTypePrimary: GRAIN_CLASS[digits[0] ?? ''] ?? null,
-      grainTypeSecondary: GRAIN_CLASS[digits[1] ?? ''] ?? null,
+      grainTypePrimary: technical
+        ? 'MM'
+        : (GRAIN_CLASS[digits[0] ?? ''] ?? null),
+      grainTypeSecondary: technical
+        ? 'MM'
+        : (GRAIN_CLASS[digits[1] ?? ''] ?? null),
       // SNOWPACK writes hand hardness negated (a plotting convention).
       handHardnessIndex: hardness === null ? null : Math.abs(hardness),
       iceVolumePct: at('0515', i),
