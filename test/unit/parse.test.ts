@@ -65,3 +65,37 @@ test('parsePro returns surface-first layers that stack to the snow depth', () =>
     assert.ok(l.grainTypePrimary, 'every snow layer has a grain class');
   }
 });
+
+test('parsePro maps Swiss grain digits to IACS classes, graupel 0 and FCxr 9', () => {
+  // One profile, three elements bottom to top: graupel (000), rounding
+  // faceted particles (990), and faceted crystals with depth hoar (450).
+  // The 0513 line carries one extra value (surface hoar on the surface).
+  const pro = [
+    '[DATA]',
+    '0500,01.02.2026 00:00:00',
+    '0501,3,10,20,30',
+    '0513,4,0,990,450,0',
+    '',
+  ].join('\n');
+  const [profile] = parsePro(pro);
+  const grains = profile!.layers.map((l) => [
+    l.grainTypeCode,
+    l.grainTypePrimary,
+    l.grainTypeSecondary,
+  ]);
+  assert.deepEqual(grains, [
+    [450, 'FC', 'DH'],
+    [990, 'FCxr', 'FCxr'],
+    [0, 'PPgp', 'PPgp'],
+  ]);
+});
+
+test('the fixture has no layer labelled graupel', () => {
+  // Vail base in February: its 990/991/951 layers are rounding faceted
+  // particles, not graupel.
+  const layers = parsePro(fixture('vail-base-run.pro')).flatMap(
+    (p) => p.layers,
+  );
+  assert.ok(layers.some((l) => l.grainTypePrimary === 'FCxr'));
+  assert.ok(layers.every((l) => l.grainTypePrimary !== 'PPgp'));
+});

@@ -90,7 +90,7 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 | 0515 / 0516 | ice / air volume %                                               |
 | 0534        | hand hardness, written **negated**; we take the absolute value   |
 
-We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 PPgp.
+We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 0 PPgp (graupel), 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 FCxr (rounding faceted particles). SNOWPACK builds the code as F1·100 + F2·10 + F3 in `ElementData::snowType` (`snowpack/DataClasses.cc`). F3 is 0, 1 (F2 in parentheses), 2 (melt-freeze crust, so 772 is MFcr) or 6 (technical snow). Graupel is `000`, but so is a water layer. The mapping once had 9 as `PPgp` and no 0, which mislabelled every rounding-faceted layer (the common `990`/`991`) as graupel.
 
 ## State, checkpoints and lineages (src/jobs/model.ts)
 

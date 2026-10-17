@@ -185,8 +185,11 @@ export interface Profile {
   layers: Layer[];
 }
 
-// Swiss grain code digit → IACS (Fierz et al. 2009) class.
+// Swiss grain code digit → IACS (Fierz et al. 2009) class. SNOWPACK builds
+// the code as F1*100 + F2*10 + F3 (ElementData::snowType in DataClasses.cc):
+// graupel is 000 and rounding faceted particles use 9.
 const GRAIN_CLASS: Record<string, string> = {
+  '0': 'PPgp',
   '1': 'PP',
   '2': 'DF',
   '3': 'RG',
@@ -195,7 +198,7 @@ const GRAIN_CLASS: Record<string, string> = {
   '6': 'SH',
   '7': 'MF',
   '8': 'IF',
-  '9': 'PPgp',
+  '9': 'FCxr',
 };
 
 function parseProDate(s: string): Date {
