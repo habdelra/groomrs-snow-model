@@ -92,6 +92,8 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 
 We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 PPgp.
 
+Adding or changing a `met` or layer field changes the contract clients read. Document it, with its unit, in `docs/api/result-document.md` (see the `api-docs` skill).
+
 ## State, checkpoints and lineages (src/jobs/model.ts)
 
 - **Spin-up** (`initialize`): starts from bare ground (`bareGroundSno`, zero layers) at typical opening minus `spinupDays`, and runs through 00:00 UTC of `asOf`'s day. It saves the output `.sno` as a checkpoint whose **lineage id is the initialize job id**.

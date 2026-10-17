@@ -90,6 +90,8 @@ There is no build step. Node 24 runs the TypeScript directly (type stripping), s
 
 All numbers are metric, and every numeric field names its unit (`airTempC`, `snowDepthCm`, `densityKgM3`). Times are ISO-8601 UTC. `GET /v1/schema` returns the JSON Schema of the requests and the result document.
 
+**Client documentation lives in [`docs/`](docs/README.md)**: every endpoint with examples, the job lifecycle and idempotency, a field-by-field reference for the result document, and the error codes. This section is a summary.
+
 | Endpoint                                                    |                                                                                                                                                                                    |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                                               | SNOWPACK version, Open-Meteo reachability, database and migration head.                                                                                                            |
