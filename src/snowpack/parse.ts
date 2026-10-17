@@ -188,8 +188,8 @@ export interface Profile {
 // Swiss grain code digit → IACS (Fierz et al. 2009) class, or the subclass
 // for PPgp and FCxr. SNOWPACK builds the code as F1*100 + F2*10 + F3
 // (ElementData::snowType in DataClasses.cc). Rounding faceted particles use 9
-// (990, 951, 491 are common). Graupel is 000, though SNOWPACK 3.7.0 never sets
-// it. Technical snow is 006 and is handled by its F3 marker below.
+// (990, 951, 490 are common). Graupel is 000, though SNOWPACK 3.7.0 never sets
+// it. Dry technical snow is 006 and is handled by its F3 marker below.
 const GRAIN_CLASS: Record<string, string> = {
   '0': 'PPgp',
   '1': 'PP',
@@ -254,7 +254,8 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
     const digits =
       code === null ? '' : String(Math.trunc(code)).padStart(3, '0');
     const hardness = at('0534', i);
-    // F3 = 6 marks technical (machine-made) snow, written as 006.
+    // F3 = 6 marks dry technical (machine-made) snow, written as 006. Once
+    // wetted, SNOWPACK gives technical snow ordinary melt-form codes.
     const technical = digits[2] === '6';
     return {
       topHeightCm: round(top),

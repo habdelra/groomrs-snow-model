@@ -74,7 +74,7 @@ test('parsePro maps Swiss grain codes to IACS classes', () => {
     '[DATA]',
     '0500,01.02.2026 00:00:00',
     '0501,5,10,20,30,40,50',
-    '0513,6,0,6,990,491,450,0',
+    '0513,6,000,006,990,491,450,0',
     '',
   ].join('\n');
   const [profile] = parsePro(pro);
@@ -87,7 +87,7 @@ test('parsePro maps Swiss grain codes to IACS classes', () => {
     [450, 'FC', 'DH'],
     [491, 'FC', 'FCxr'],
     [990, 'FCxr', 'FCxr'],
-    [6, 'MM', 'MM'], // technical snow, F3 = 6
+    [6, 'MM', 'MM'], // dry technical snow, F3 = 6
     [0, 'PPgp', 'PPgp'], // graupel
   ]);
 });
