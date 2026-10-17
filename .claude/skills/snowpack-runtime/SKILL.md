@@ -90,7 +90,12 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 | 0515 / 0516 | ice / air volume %                                               |
 | 0534        | hand hardness, written **negated**; we take the absolute value   |
 
-We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 0 PPgp (graupel), 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 FCxr (rounding faceted particles). SNOWPACK builds the code as F1·100 + F2·10 + F3 in `ElementData::snowType` (`snowpack/DataClasses.cc`). F3 is 0, 1 (F2 in parentheses), 2 (melt-freeze crust, so 772 is MFcr) or 6 (technical snow). Graupel is `000`, but so is a water layer. The mapping once had 9 as `PPgp` and no 0, which mislabelled every rounding-faceted layer (the common `990`/`991`) as graupel.
+We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS classes, or subclasses for PPgp and FCxr: 0 PPgp (graupel), 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 FCxr (rounding faceted particles). SNOWPACK builds the code as F1·100 + F2·10 + F3 in `ElementData::snowType` (`snowpack/DataClasses.cc`).
+
+- **9 is common.** Dry non-dendritic snow with grains of 0.7 mm or more gets `490`, `491` or `591` at sphericity 0.2–0.4, and `990` or `951` at 0.4 or above (`snowType`). Wet snow can give `791`. The mapping once had 9 as `PPgp`, which labelled most mid-winter layers as graupel. Ignore the comment in `StabilityAlgorithms.cc` saying "F1=9 does not occur in SNOWPACK"; it's out of date.
+- **Graupel (`000`) never occurs in 3.7.0.** `Snowpack.cc` sets the graupel marker only when a logistic value exceeds 1, which it can't. The only other route is an input `.sno` with marker 4, and this service spins up from bare ground. Water layers are marker 19 and go through the melt-forms branch, so they aren't `000` either.
+- **F3 (the last digit):** `2` is a melt-freeze crust (`772` is MFcr) and `6` is dry technical snow (`006`), which we report as the ICSSG machine-made class `MM`. On first wetting, SNOWPACK moves technical snow's marker from 6 to 16 (`Metamorphism.cc`), and the layer then gets ordinary melt-form codes. A wetted machine-made layer is therefore indistinguishable from natural snow in the grain code. SLF's docs don't define `1`, so don't describe it.
+- **The 0513 line carries one value per element plus one more:** `660` when there's surface hoar on the surface, `0` when there isn't. The parser reads only the per-element values.
 
 ## State, checkpoints and lineages (src/jobs/model.ts)
 
