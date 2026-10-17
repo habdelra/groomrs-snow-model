@@ -38,6 +38,7 @@ The Open-Meteo client is tested against an injected `fetchImpl` stand-in that an
 - **"Current season" uses El Colorado**: its season is the calendar year, so `now` always falls inside one. It asserts completeness, not snow (the snowpack can be gone late in the year).
 - Tests read Postgres directly through `dbQuery` (PG* from `.mise.toml`) to check what was recorded, such as no new `model_runs` on an idempotent retry.
 - Integration files run serially (`--test-concurrency=1`). The service also runs jobs one at a time.
+- The integration tests and `docs/api/` describe the same behaviour. When a test pins down something new a client can observe (a status code, an error reason, a series length), check the docs say the same (see the `api-docs` skill).
 
 ## Timing
 

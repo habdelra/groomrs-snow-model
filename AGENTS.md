@@ -1,6 +1,6 @@
 # Instructions for AI agents
 
-This repo is the GROOMRS snow-model service: self-hosted Open-Meteo weather → SNOWPACK/MeteoIO → raw, metric snowpack data over HTTP for Boxel's scheduling pipeline. Read `README.md` first for what it does and how to run it.
+This repo is the GROOMRS snow-model service: self-hosted Open-Meteo weather → SNOWPACK/MeteoIO → raw, metric snowpack data over HTTP for Boxel's scheduling pipeline. Read `README.md` first for what it does and how to run it, and `docs/api/` for the HTTP API as clients see it.
 
 ## Boundaries (hard rules)
 
@@ -8,6 +8,7 @@ This repo is the GROOMRS snow-model service: self-hosted Open-Meteo weather → 
 - **Metric only.** The API, the database, resort configs and logs are metric. Temperatures are °C, depths cm, water mm, density kg/m³, wind m/s, radiation W/m². Every numeric contract field names its unit (`snowDepthCm`). Never add °F, inches or feet; Boxel converts for display. SNOWPACK/SMET files keep their native SI units (K, m, fractions). All conversions go through `src/units.ts`.
 - **Never write to Boxel.** The service answers requests; the Boxel pipeline publishes.
 - **Contract versioning.** `src/contract/v1.ts` is the Boxel-facing contract. Adding a field is fine. Renaming or removing a field, or changing its unit or meaning, needs a v2.
+- **Keep the API docs current.** `docs/api/` is the client-facing reference for the HTTP API. Any change a caller can observe (a route, parameter, default, limit, contract field, error code, job status or blocked reason) updates those docs in the same change. Load the `api-docs` skill.
 
 ## Toolchain
 
@@ -42,5 +43,6 @@ Project skills are in `.claude/skills/`. Load the matching one before working in
 | `db-migrations`        | Any schema change                                                                                 |
 | `snow-model-testing`   | Writing or debugging tests, fixtures or CI                                                        |
 | `add-a-resort`         | Adding or changing a resort config                                                                |
+| `api-docs`             | Any client-visible API change: routes, the contract, job semantics, errors. Updates `docs/api/`   |
 
 **Keep the skills current.** When you learn something non-obvious here (a SNOWPACK quirk, an Open-Meteo coverage gap, a failure mode and its fix), add it to the relevant skill, or create a new skill, in the same change. Skills are how the next agent avoids relearning it.

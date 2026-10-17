@@ -29,6 +29,7 @@ One request per point per calendar month (`src/weather/open-meteo.ts`):
 - The same `/v1/forecast` endpoint serves history via `start_date`/`end_date`. The self-host has no separate historical-forecast host.
 - **Cache**: `DATA_DIR/weather/open-meteo/<model>/<resort>/<point>/<YYYY-MM>.<hash>.json`. The hash covers lat, lon, elevation and the variable list. A month is "archived" (kept forever) once it ended more than 3 days ago. The current and future months are refetched after a 60-minute TTL.
 - **Forecast reach**: requests stop at today + 14 days. `hourly()` refuses windows beyond that.
+- The forecast reach, the weather endpoint's window limit, the forcing fields and the `weather_coverage` threshold are all documented for clients in `docs/api/`. Update them there when they change (see the `api-docs` skill).
 
 ## Measured coverage (Oct 2026, `mise run probe:open-meteo`)
 
