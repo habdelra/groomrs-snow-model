@@ -29,6 +29,10 @@ export interface JobRequest {
   asOf: string;
   spinupDays?: number;
   horizonHours?: number;
+  // Resolved when the job is created: see RefreshRequest.
+  scenario?: 'natural' | 'managed';
+  groomingDefault?: 'none' | 'nightly';
+  snowmakingForecast?: 'none' | 'predicted';
 }
 
 interface JobRow {

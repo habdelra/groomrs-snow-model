@@ -7,6 +7,8 @@ This repo is the GROOMRS snow-model service: self-hosted Open-Meteo weather → 
 - **Raw data only.** Never add interpretation: no carving scores, condition labels, confidence or best windows. Those live in Boxel's deterministic rules and AI analysis. If a derived quantity seems useful, return the physical inputs it needs instead.
 - **Metric only.** The API, the database, resort configs and logs are metric. Temperatures are °C, depths cm, water mm, density kg/m³, wind m/s, radiation W/m². Every numeric contract field names its unit (`snowDepthCm`). Never add °F, inches or feet; Boxel converts for display. SNOWPACK/SMET files keep their native SI units (K, m, fractions). All conversions go through `src/units.ts`.
 - **Never write to Boxel.** The service answers requests; the Boxel pipeline publishes.
+- **Observations are stored as received.** Boxel decides what was observed (a groomer seen, guns running, a reported depth). The service keeps each record with its revisions and applies it as a physical input. It never reinterprets a status, and never reads "nothing seen" as "did not happen". See `docs/observations.md`.
+- **Natural runs stay exactly the template.** Grooming and machine snow are added to the ini in code (`managedIni` in `src/snowpack/config.ts`), never written into `config/snowpack/base.ini.tmpl`. Editing the template changes every resort's `configVersion` and orphans all saved state.
 - **Contract versioning.** `src/contract/v1.ts` is the Boxel-facing contract. Adding a field is fine. Renaming or removing a field, or changing its unit or meaning, needs a v2.
 
 ## Toolchain

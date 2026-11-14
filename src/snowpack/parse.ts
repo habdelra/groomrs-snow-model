@@ -185,6 +185,10 @@ export interface Profile {
   layers: Layer[];
 }
 
+// SNOWPACK writes machine-made snow as 006: no F1 or F2, marker 6. It keeps
+// that code through grooming and ageing. IACS calls the class MM.
+const TECHNICAL_SNOW_CODE = 6;
+
 // Swiss grain code digit → IACS (Fierz et al. 2009) class.
 const GRAIN_CLASS: Record<string, string> = {
   '1': 'PP',
@@ -263,7 +267,10 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
       sphericity: at('0509', i),
       coordinationNumber: at('0510', i),
       grainTypeCode: code,
-      grainTypePrimary: GRAIN_CLASS[digits[0] ?? ''] ?? null,
+      grainTypePrimary:
+        code === TECHNICAL_SNOW_CODE
+          ? 'MM'
+          : (GRAIN_CLASS[digits[0] ?? ''] ?? null),
       grainTypeSecondary: GRAIN_CLASS[digits[1] ?? ''] ?? null,
       // SNOWPACK writes hand hardness negated (a plotting convention).
       handHardnessIndex: hardness === null ? null : Math.abs(hardness),

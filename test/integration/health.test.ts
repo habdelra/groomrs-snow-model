@@ -16,7 +16,7 @@ test('health reports SNOWPACK, Open-Meteo and the migrated database', async () =
   assert.equal(body.snowpackVersion, '3.7.0');
   assert.equal(body.openMeteo.reachable, true);
   assert.equal(body.database.reachable, true);
-  assert.match(body.database.migrationHead ?? '', /initial-jobs-and-runs/);
+  assert.match(body.database.migrationHead ?? '', /^\d+_[a-z0-9-]+$/);
 });
 
 test('the contract schema is published', async () => {

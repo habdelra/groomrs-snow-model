@@ -65,6 +65,12 @@ export async function runPoint(
     to: Date;
     initialSno: string;
     profileIntervalHours: number | null;
+    // Grooming and machine snow for this run; left out for natural snow.
+    managed?: {
+      groomingHourUtc: number | null;
+      techHours: ReadonlySet<string>;
+      techMmPerStep: number;
+    };
   },
 ): Promise<PointRunResult> {
   const { resort, point, from, to } = opts;
@@ -103,7 +109,17 @@ export async function runPoint(
   const station = stationId(point);
   await writeFile(
     join(inputDir, `${station}.smet`),
-    toSmet(resort, point, weather.hours),
+    toSmet(
+      resort,
+      point,
+      weather.hours,
+      opts.managed?.techHours.size
+        ? {
+            hours: opts.managed.techHours,
+            mmPerStep: opts.managed.techMmPerStep,
+          }
+        : undefined,
+    ),
   );
   await writeFile(join(inputDir, `${station}.sno`), opts.initialSno);
   const iniPath = join(runDir, 'io.ini');
@@ -114,6 +130,14 @@ export async function runPoint(
       inputDir,
       outputDir,
       profileIntervalHours: opts.profileIntervalHours,
+      ...(opts.managed
+        ? {
+            managed: {
+              groomingHourUtc: opts.managed.groomingHourUtc,
+              technicalSnow: opts.managed.techHours.size > 0,
+            },
+          }
+        : {}),
     }),
   );
   await writeFile(

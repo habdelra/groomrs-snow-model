@@ -4,6 +4,8 @@ The GROOMRS snow-model service. For each configured ski resort it pulls hourly w
 
 It is the "separate snow-model service" in the GROOMRS system architecture (`groomrs-design/groomrs-system-architecture.md`). Boxel's scheduling pipeline calls it, normalizes the result and publishes cards.
 
+**Building the scheduled jobs that call this service?** Start with `groomrs-design/groomrs-observations-automation-handoff.md`. It says what is ready on both sides, what the forecast-refresh automation has to send and ask for, and what this service still needs before Boxel can call it: hosting, authentication, and a season initialized per resort. The calls themselves are in [API (v1)](#api-v1) and [`docs/observations.md`](docs/observations.md).
+
 **What it does not do:**
 
 - **No interpretation.** It returns physical quantities: weather forcing, snow depth, layer densities, grain types, temperatures and so on. Carving quality, condition labels and confidence belong to Boxel's deterministic rules and AI analysis.
@@ -13,7 +15,8 @@ It is the "separate snow-model service" in the GROOMRS system architecture (`gro
 ## Stage 1 scope
 
 - Runs locally under Docker Compose, with no authentication.
-- Natural snow only: no snowmaking scenarios or grooming yet. The contract already carries `scenario: "natural"` so scenarios can be added later.
+- Two snowpacks per point: **natural** (weather only) and **managed** (weather plus observed grooming and machine snow). See [`docs/observations.md`](docs/observations.md).
+- No snowmaking is assumed over the forecast, and no per-resort production rate or base-depth bias is learned yet.
 - Seed resorts: Blue Mountain (PA), Vail (CO) and El Colorado (Chile).
 
 ## Prerequisites
@@ -90,16 +93,19 @@ There is no build step. Node 24 runs the TypeScript directly (type stripping), s
 
 All numbers are metric, and every numeric field names its unit (`airTempC`, `snowDepthCm`, `densityKgM3`). Times are ISO-8601 UTC. `GET /v1/schema` returns the JSON Schema of the requests and the result document.
 
-| Endpoint                                                    |                                                                                                                                                                                    |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`                                               | SNOWPACK version, Open-Meteo reachability, database and migration head.                                                                                                            |
-| `GET /v1/resorts`, `GET /v1/resorts/:id`                    | Resort config, model points and `configVersion`.                                                                                                                                   |
-| `GET /v1/resorts/:id/weather?point=&start=&end=`            | Normalized hourly weather for one point, at most 31 days.                                                                                                                          |
-| `POST /v1/resorts/:id/seasons/:season/initialize`           | Seasonal spin-up through the start of `asOf`'s UTC day. Season ids look like `2025-26` (north) or `2026` (south). Body: `{ idempotencyKey, asOf?, spinupDays? }`.                  |
-| `POST /v1/resorts/:id/refresh`                              | Advance the saved state to the start of `asOf`'s UTC day with past weather, then run `horizonHours` (≤ 168) forward from a copy. Body: `{ idempotencyKey, asOf?, horizonHours? }`. |
-| `GET /v1/jobs/:id`                                          | `queued`, `running`, `blocked`, `complete` or `failed`, plus per-point progress, the error and `resultId`.                                                                         |
-| `GET /v1/results/:id`, `GET /v1/resorts/:id/results/latest` | The result document. `?profileDepthCm=N` keeps only layers within N cm of the surface.                                                                                             |
-| `GET /v1/runs/:runId/files/<path>`                          | Native files from a run: `io.ini`, `input/*.smet`, `output/*.pro` and so on.                                                                                                       |
+| Endpoint                                                      |                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /health`                                                 | SNOWPACK version, Open-Meteo reachability, database and migration head.                                                                                                                                                              |
+| `GET /v1/resorts`, `GET /v1/resorts/:id`                      | Resort config, model points and `configVersion`.                                                                                                                                                                                     |
+| `GET /v1/resorts/:id/weather?point=&start=&end=`              | Normalized hourly weather for one point, at most 31 days.                                                                                                                                                                            |
+| `POST /v1/resorts/:id/seasons/:season/initialize`             | Seasonal spin-up through the start of `asOf`'s UTC day. Season ids look like `2025-26` (north) or `2026` (south). Body: `{ idempotencyKey, asOf?, spinupDays? }`.                                                                    |
+| `POST /v1/resorts/:id/refresh`                                | Advance the saved state to the start of `asOf`'s UTC day with past weather, then run `horizonHours` (≤ 168) forward from a copy. Body: `{ idempotencyKey, asOf?, horizonHours?, scenario?, groomingDefault?, snowmakingForecast? }`. |
+| `POST /v1/resorts/:id/observations`                           | Store new or amended grooming, snowmaking and base-depth observations. No model runs. Body: `{ idempotencyKey, through, observations }`.                                                                                             |
+| `GET /v1/resorts/:id/observations/latest`                     | The last observation received per kind, so the caller sends only what is newer.                                                                                                                                                      |
+| `GET /v1/resorts/:id/observations?kind=&from=&to=&revisions=` | What is stored; `revisions=all` includes superseded revisions.                                                                                                                                                                       |
+| `GET /v1/jobs/:id`                                            | `queued`, `running`, `blocked`, `complete` or `failed`, plus per-point progress, the error and `resultId`.                                                                                                                           |
+| `GET /v1/results/:id`, `GET /v1/resorts/:id/results/latest`   | The result document. `?profileDepthCm=N` keeps only layers within N cm of the surface.                                                                                                                                               |
+| `GET /v1/runs/:runId/files/<path>`                            | Native files from a run: `io.ini`, `input/*.smet`, `output/*.pro` and so on.                                                                                                                                                         |
 
 Jobs are idempotent: reposting the same body with the same `idempotencyKey` returns the existing job, and reusing a key for a different body is a `409`. A job is `blocked` when it can't proceed until something changes: `not_initialized`, `before_spinup` or `weather_coverage`.
 
@@ -111,6 +117,8 @@ A result document holds, for each point:
 - `profiles`: layer stacks every 3 h, surface first, with density, temperature, liquid water, grain size, bond size, grain type and hand hardness.
 
 It also carries provenance (weather model and retrieval time, whether the weather was archived or forecast, SNOWPACK and service versions) and any data gaps.
+
+A refresh is `managed` when the resort has observations for the season, unless the body says `"scenario": "natural"`. A managed result's points are the managed snowpack, and each carries `managed`: the natural depth for comparison, the grooming passes and machine snow applied, and what was done about each base-depth reading.
 
 ### Units
 
@@ -146,14 +154,24 @@ results/<resultId>.json                                             result docum
 
 Postgres tables (`migrations/`):
 
-| Table               | Holds                                                                         |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `jobs`              | One row per requested job, with its idempotency key, status, lease and error. |
-| `model_runs`        | One SNOWPACK execution: point, kind, window, versions and run directory.      |
-| `state_checkpoints` | Saved state per point and valid time, with its lineage.                       |
-| `results`           | Result documents.                                                             |
+| Table                    | Holds                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `jobs`                   | One row per requested job, with its idempotency key, status, lease and error.                                                                          |
+| `model_runs`             | One SNOWPACK execution: point, kind, window, versions and run directory.                                                                               |
+| `state_checkpoints`      | Saved state per point and valid time, with its lineage, its scenario (natural or managed) and, for managed states, a hash of the inputs that built it. |
+| `observations`           | Every observation received, append-only, with a revision per amendment.                                                                                |
+| `observation_batches`    | Each observations request: idempotency key, the `through` time stated, and the answer given.                                                           |
+| `base_depth_resolutions` | What the model did about one base-depth reading at one point.                                                                                          |
+| `results`                | Result documents.                                                                                                                                      |
 
-Grooming reports and base-depth observations will get their own tables here.
+## Observations
+
+Boxel sends what it observed; the service stores it and applies it in the managed snowpack. [`docs/observations.md`](docs/observations.md) has the full description.
+
+- **Grooming** is applied on the nights it was seen. SNOWPACK only has a fixed nightly schedule, so the managed chain runs the past one day per SNOWPACK run and sets the switch per day.
+- **Base depth** is never copied in. The gap between the resort's figure and the model is read as machine snow, and half of it is closed per reading by adding (or removing) hours of machine snow on hours cold enough to make it.
+- **Snowmaking sightings** sharpen where that machine snow goes. They never say how much was made.
+- **An amendment to a past day** re-runs from that day. Each saved managed state carries a hash of its inputs, so states built from superseded observations are simply not reused.
 
 ## Adding a resort
 

@@ -47,11 +47,20 @@ function fmt(value: number | null, decimals: number): string {
 // One SMET row per hour in SNOWPACK's native SI units: TA in K, RH as a
 // fraction, wind in m/s, radiation in W/m², PSUM in mm per hour, PSUM_PH as a
 // liquid fraction and CLD in oktas.
+//
+// `tech`, when given, adds a PSUM_TECH column: `mmPerStep` on the hours listed
+// and zero elsewhere. SNOWPACK reads it per calculation step (the ini resamples
+// it by nearest hour), and makes machine snow on every step where it is
+// positive.
 export function toSmet(
   resort: Resort,
   point: ModelPoint,
   hours: HourlyWeather[],
+  tech?: { hours: ReadonlySet<string>; mmPerStep: number },
 ): string {
+  const fields: string[] = tech
+    ? [...SMET_FIELDS, 'PSUM_TECH']
+    : [...SMET_FIELDS];
   const header = [
     'SMET 1.1 ASCII',
     '[HEADER]',
@@ -63,7 +72,7 @@ export function toSmet(
     `nodata       = ${SMET_NODATA}`,
     'tz           = 0',
     `source       = Open-Meteo ${resort.weather.model} via groomrs-snow-model`,
-    `fields       = ${SMET_FIELDS.join(' ')}`,
+    `fields       = ${fields.join(' ')}`,
     '[DATA]',
   ];
   const rows = hours.map((h) =>
@@ -85,6 +94,7 @@ export function toSmet(
       ),
       fmt(precipitationPhase(h), 3),
       fmt(h.cloudCoverPct === null ? null : pctToOktas(h.cloudCoverPct), 2),
+      ...(tech ? [fmt(tech.hours.has(h.time) ? tech.mmPerStep : 0, 3)] : []),
     ].join(' '),
   );
   return `${[...header, ...rows].join('\n')}\n`;
