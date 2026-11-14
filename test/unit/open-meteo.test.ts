@@ -6,6 +6,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { parseResort } from '../../src/resorts/registry.ts';
 import {
   monthsBetween,
+  normalize,
   OpenMeteoClient,
 } from '../../src/weather/open-meteo.ts';
 
@@ -158,4 +159,25 @@ test('a window beyond the forecast reach is refused', async () => {
     ),
     /forecast only reaches/,
   );
+});
+
+test('amounts that cannot be negative are clamped at zero', () => {
+  // Open-Meteo's forecast sometimes carries a small negative precipitation.
+  const [hour] = normalize({
+    hourly: {
+      time: ['2026-11-16T22:00'],
+      temperature_2m: [-4],
+      precipitation: [-0.1],
+      rain: [-0.1],
+      snowfall: [-0.07],
+      shortwave_radiation: [-1],
+    },
+  } as never);
+  assert.equal(hour!.precipitationMm, 0);
+  assert.equal(hour!.rainMm, 0);
+  assert.equal(hour!.snowfallCm, 0);
+  assert.equal(hour!.shortwaveWm2, 0);
+  // Temperatures keep their sign, and missing values stay missing.
+  assert.equal(hour!.airTempC, -4);
+  assert.equal(hour!.windSpeedMs, null);
 });

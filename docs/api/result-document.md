@@ -129,6 +129,8 @@ The hourly weather from Open-Meteo, adjusted to the point's elevation by Open-Me
 
 `snowfallCm` is Open-Meteo's own estimate. SNOWPACK decides the precipitation phase itself, so for modelled new snow use `met[].newSnow*Cm`.
 
+`shortwaveWm2`, `precipitationMm`, `rainMm` and `snowfallCm` are never negative. Open-Meteo's forecast occasionally carries a small negative value, which the service reports, and gives SNOWPACK, as 0.
+
 ### Met (hourly SNOWPACK series)
 
 SNOWPACK's hourly output for the point's snow column.
