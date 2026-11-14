@@ -41,6 +41,7 @@ The Open-Meteo client is tested against an injected `fetchImpl` stand-in that an
 - **State `scenario: 'natural'` in a refresh that must be natural.** The default becomes `managed` once the database holds observations for that resort and season, which the observations suite leaves behind for Blue Mountain 2025/26.
 - The observations suite initializes its own lineage and refreshes straight after, because the managed chain builds on the most recent completed spin-up.
 - Integration files run serially (`--test-concurrency=1`). The service also runs jobs one at a time.
+- The integration tests and `docs/api/` describe the same behaviour. When a test pins down something new a client can observe (a status code, an error reason, a series length), check the docs say the same (see the `api-docs` skill).
 
 ## Timing
 

@@ -70,6 +70,8 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 
 ## Outputs → contract (src/snowpack/parse.ts)
 
+Adding or changing a `met` or layer field changes the contract clients read. Document it in `docs/api/result-document.md`, with its unit, a plain-language meaning and a source link. The same applies to changes in how refresh picks and advances checkpoints (`jobs.md`, `endpoints.md`) and to the `weather_coverage` rules in `point-run.ts` (`jobs.md`, `result-document.md`). See the `api-docs` skill.
+
 **SMET output values are not SI as written.** The header's `units_offset` and `units_multiplier` convert them: TA and TSS are written in °C with offset 273.15; HS, HN* and SWE-like depths in cm with multiplier 0.01; `PSUM24` in mm with multiplier 0.001; `hoar_size` in mm with 0.001. `parseSmet` applies offset and multiplier to get SI, and `MET_FIELDS` then converts SI to contract metric. When adding a field, check its multiplier in a real output header first: `PSUM24` was once mapped as mm and came out 1000× too small.
 
 `plot_unit` in the header is misaligned with `fields`, so don't trust it. Use the multipliers.
@@ -90,7 +92,12 @@ To debug any failing run, copy its run directory, sed the paths in `io.ini` to t
 | 0515 / 0516 | ice / air volume %                                               |
 | 0534        | hand hardness, written **negated**; we take the absolute value   |
 
-We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS: 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 PPgp.
+We return layers surface-first with `depthCm` from the surface. Grain digits map to IACS classes, or subclasses for PPgp and FCxr: 0 PPgp (graupel), 1 PP, 2 DF, 3 RG, 4 FC, 5 DH, 6 SH, 7 MF, 8 IF, 9 FCxr (rounding faceted particles). SNOWPACK builds the code as F1·100 + F2·10 + F3 in `ElementData::snowType` (`snowpack/DataClasses.cc`).
+
+- **9 is common.** Dry non-dendritic snow with grains of 0.7 mm or more gets `490`, `491` or `591` at sphericity 0.2–0.4, and `990` or `951` at 0.4 or above (`snowType`). Wet snow can give `791`. The mapping once had 9 as `PPgp`, which labelled most mid-winter layers as graupel. Ignore the comment in `StabilityAlgorithms.cc` saying "F1=9 does not occur in SNOWPACK"; it's out of date.
+- **Graupel (`000`) never occurs in 3.7.0.** `Snowpack.cc` sets the graupel marker only when a logistic value exceeds 1, which it can't. The only other route is an input `.sno` with marker 4, and this service spins up from bare ground. Water layers are marker 19 and go through the melt-forms branch, so they aren't `000` either.
+- **F3 (the last digit):** `2` is a melt-freeze crust (`772` is MFcr) and `6` is dry technical snow (`006`), which we report as the ICSSG machine-made class `MM`. On first wetting, SNOWPACK moves technical snow's marker from 6 to 16 (`Metamorphism.cc`), and the layer then gets ordinary melt-form codes. A wetted machine-made layer is therefore indistinguishable from natural snow in the grain code. SLF's docs don't define `1`, so don't describe it.
+- **The 0513 line carries one value per element plus one more:** `660` when there's surface hoar on the surface, `0` when there isn't. The parser reads only the per-element values.
 
 ## Grooming and technical snow (managed runs)
 

@@ -74,3 +74,5 @@ curl -s -XPOST localhost:8090/v1/resorts/<id>/seasons/<season>/initialize \
 ## Changing an existing resort
 
 Any change to the YAML, or to `config/snowpack/base.ini.tmpl`, changes the resort's `configVersion`. Existing checkpoints belong to the old version, so refresh is `blocked` with `not_initialized` until the season is initialized again. This is deliberate: results are never computed from state built under a different configuration. Mention the re-initialization in the PR.
+
+A new resort needs no docs change. A new field in the resort YAML that `resortView` returns, or a change to the point thresholds, does: update `docs/api/endpoints.md` and `docs/api/overview.md` (see the `api-docs` skill).

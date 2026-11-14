@@ -257,8 +257,15 @@ export const Layer = z.object({
   grainTypePrimary: z
     .string()
     .nullable()
-    .describe('IACS class of F1; MM for machine-made snow (code 6)'),
-  grainTypeSecondary: z.string().nullable().describe('IACS class of F2'),
+    .describe(
+      'IACS class of F1, or subclass PPgp/FCxr; MM for dry technical snow',
+    ),
+  grainTypeSecondary: z
+    .string()
+    .nullable()
+    .describe(
+      'IACS class of F2, or subclass PPgp/FCxr; MM for dry technical snow',
+    ),
   handHardnessIndex: n('1 fist … 5 knife, 6 ice'),
   iceVolumePct: n('%'),
   airVolumePct: n('%'),

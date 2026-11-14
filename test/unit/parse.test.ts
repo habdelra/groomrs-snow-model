@@ -65,3 +65,39 @@ test('parsePro returns surface-first layers that stack to the snow depth', () =>
     assert.ok(l.grainTypePrimary, 'every snow layer has a grain class');
   }
 });
+
+test('parsePro maps Swiss grain codes to IACS classes', () => {
+  // One profile, five elements bottom to top. The 0513 line carries one
+  // extra value after the elements: 0 when there is no surface hoar, 660
+  // when there is.
+  const pro = [
+    '[DATA]',
+    '0500,01.02.2026 00:00:00',
+    '0501,5,10,20,30,40,50',
+    '0513,6,000,006,990,491,450,0',
+    '',
+  ].join('\n');
+  const [profile] = parsePro(pro);
+  const grains = profile!.layers.map((l) => [
+    l.grainTypeCode,
+    l.grainTypePrimary,
+    l.grainTypeSecondary,
+  ]);
+  assert.deepEqual(grains, [
+    [450, 'FC', 'DH'],
+    [491, 'FC', 'FCxr'],
+    [990, 'FCxr', 'FCxr'],
+    [6, 'MM', 'MM'], // dry technical snow, F3 = 6
+    [0, 'PPgp', 'PPgp'], // graupel
+  ]);
+});
+
+test('the fixture has no layer labelled graupel', () => {
+  // Vail base in February: its 990/991/951 layers are rounding faceted
+  // particles, not graupel.
+  const layers = parsePro(fixture('vail-base-run.pro')).flatMap(
+    (p) => p.layers,
+  );
+  assert.ok(layers.some((l) => l.grainTypePrimary === 'FCxr'));
+  assert.ok(layers.every((l) => l.grainTypePrimary !== 'PPgp'));
+});

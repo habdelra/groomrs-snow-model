@@ -185,12 +185,13 @@ export interface Profile {
   layers: Layer[];
 }
 
-// SNOWPACK writes machine-made snow as 006: no F1 or F2, marker 6. It keeps
-// that code through grooming and ageing. IACS calls the class MM.
-const TECHNICAL_SNOW_CODE = 6;
-
-// Swiss grain code digit → IACS (Fierz et al. 2009) class.
+// Swiss grain code digit → IACS (Fierz et al. 2009) class, or the subclass
+// for PPgp and FCxr. SNOWPACK builds the code as F1*100 + F2*10 + F3
+// (ElementData::snowType in DataClasses.cc). Rounding faceted particles use 9
+// (990, 951, 490 are common). Graupel is 000, though SNOWPACK 3.7.0 never sets
+// it. Dry technical snow is 006 and is handled by its F3 marker below.
 const GRAIN_CLASS: Record<string, string> = {
+  '0': 'PPgp',
   '1': 'PP',
   '2': 'DF',
   '3': 'RG',
@@ -199,7 +200,7 @@ const GRAIN_CLASS: Record<string, string> = {
   '6': 'SH',
   '7': 'MF',
   '8': 'IF',
-  '9': 'PPgp',
+  '9': 'FCxr',
 };
 
 function parseProDate(s: string): Date {
@@ -253,6 +254,9 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
     const digits =
       code === null ? '' : String(Math.trunc(code)).padStart(3, '0');
     const hardness = at('0534', i);
+    // F3 = 6 marks dry technical (machine-made) snow, written as 006. Once
+    // wetted, SNOWPACK gives technical snow ordinary melt-form codes.
+    const technical = digits[2] === '6';
     return {
       topHeightCm: round(top),
       thicknessCm: round(top - below),
@@ -267,11 +271,12 @@ function toProfile(time: Date, block: Map<string, number[]>): Profile {
       sphericity: at('0509', i),
       coordinationNumber: at('0510', i),
       grainTypeCode: code,
-      grainTypePrimary:
-        code === TECHNICAL_SNOW_CODE
-          ? 'MM'
-          : (GRAIN_CLASS[digits[0] ?? ''] ?? null),
-      grainTypeSecondary: GRAIN_CLASS[digits[1] ?? ''] ?? null,
+      grainTypePrimary: technical
+        ? 'MM'
+        : (GRAIN_CLASS[digits[0] ?? ''] ?? null),
+      grainTypeSecondary: technical
+        ? 'MM'
+        : (GRAIN_CLASS[digits[1] ?? ''] ?? null),
       // SNOWPACK writes hand hardness negated (a plotting convention).
       handHardnessIndex: hardness === null ? null : Math.abs(hardness),
       iceVolumePct: at('0515', i),
