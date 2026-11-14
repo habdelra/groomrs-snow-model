@@ -12,6 +12,9 @@ All paths are relative to the [base URL](overview.md#base-url-and-authentication
 | `GET`  | [`/v1/resorts/:id/weather`](#get-v1resortsidweather)                                     | Hourly weather for one point (synchronous)    |
 | `POST` | [`/v1/resorts/:id/seasons/:season/initialize`](#post-v1resortsidseasonsseasoninitialize) | Start a seasonal spin-up job                  |
 | `POST` | [`/v1/resorts/:id/refresh`](#post-v1resortsidrefresh)                                    | Start a refresh (advance + forecast) job      |
+| `POST` | [`/v1/resorts/:id/observations`](#post-v1resortsidobservations)                          | Store a batch of observations                 |
+| `GET`  | [`/v1/resorts/:id/observations/latest`](#get-v1resortsidobservationslatest)              | The newest stored observation of each kind    |
+| `GET`  | [`/v1/resorts/:id/observations`](#get-v1resortsidobservations)                           | List stored observations                      |
 | `GET`  | [`/v1/jobs/:id`](#get-v1jobsid)                                                          | Job status                                    |
 | `GET`  | [`/v1/results/:id`](#get-v1resultsid)                                                    | A result document                             |
 | `GET`  | [`/v1/resorts/:id/results/latest`](#get-v1resortsidresultslatest)                        | The newest result document for a resort       |
@@ -37,7 +40,7 @@ Reports whether the service can do work: SNOWPACK is installed, Open-Meteo answe
   "openMeteo": { "reachable": true, "url": "http://open-meteo:8080" },
   "database": {
     "reachable": true,
-    "migrationHead": "1791734141239_initial-jobs-and-runs"
+    "migrationHead": "1794676594559_add-observations"
   }
 }
 ```
@@ -69,9 +72,9 @@ Liveness only: answers as long as the process is up, without checking dependenci
 
 ## `GET /v1/schema`
 
-Returns [JSON Schema](https://json-schema.org/draft/2020-12) (draft 2020-12) for the two job request bodies and the result document, generated from the same definitions the service validates against. Use it to generate client types or to validate result documents.
+Returns [JSON Schema](https://json-schema.org/draft/2020-12) (draft 2020-12) for the two job request bodies, the observation batch body and the result document, generated from the same definitions the service validates against. Use it to generate client types or to validate result documents.
 
-It does **not** cover the other response bodies (resorts, weather, jobs, health, errors). Those are described only in these documents.
+It does **not** cover the other response bodies (resorts, weather, jobs, observation responses, health, errors). Those are described only in these documents.
 
 ```json
 {
@@ -82,16 +85,18 @@ It does **not** cover the other response bodies (resorts, weather, jobs, health,
     "…": "…"
   },
   "refreshRequest": { "…": "…" },
+  "observationBatchRequest": { "…": "…" },
   "resultDocument": { "…": "…" }
 }
 ```
 
-| Field               | Type   | Description                                                                                         |
-| ------------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| `schemaVersion`     | string | Contract version, `groomrs-snow-model/v1`.                                                          |
-| `initializeRequest` | object | JSON Schema of the [initialize](#post-v1resortsidseasonsseasoninitialize) request body.             |
-| `refreshRequest`    | object | JSON Schema of the [refresh](#post-v1resortsidrefresh) request body, with `horizonHours`'s default. |
-| `resultDocument`    | object | JSON Schema of the [result document](result-document.md).                                           |
+| Field                     | Type   | Description                                                                                         |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------------------- |
+| `schemaVersion`           | string | Contract version, `groomrs-snow-model/v1`.                                                          |
+| `initializeRequest`       | object | JSON Schema of the [initialize](#post-v1resortsidseasonsseasoninitialize) request body.             |
+| `refreshRequest`          | object | JSON Schema of the [refresh](#post-v1resortsidrefresh) request body, with `horizonHours`'s default. |
+| `observationBatchRequest` | object | JSON Schema of the [observation batch](#post-v1resortsidobservations) request body.                 |
+| `resultDocument`          | object | JSON Schema of the [result document](result-document.md).                                           |
 
 ## `GET /v1/resorts`
 
@@ -326,7 +331,8 @@ Creates a **refresh** job. For each point it:
 
 1. Finds the saved state for the season containing `asOf`: the newest checkpoint at or before the start of `asOf`'s UTC day, from the most recently completed initialize job for that season and the resort's current `configVersion`.
 2. Advances that state with past weather to the start of `asOf`'s UTC day, if it isn't there already, and saves the result as a new checkpoint.
-3. Runs SNOWPACK `horizonHours` forward from a copy of that state. The forecast is not saved as state.
+3. On a **managed** refresh only, brings the point's managed snowpack to the start of `asOf`'s UTC day: the stored grooming, snowmaking and base-depth observations applied one UTC day at a time from the season's spin-up state. Days already run with the same inputs are reused. See [Jobs: managed refreshes](jobs.md#managed-refreshes).
+4. Runs SNOWPACK `horizonHours` forward from a copy of that state (the managed one on a managed refresh). The forecast is not saved as state.
 
 When the job completes, its `resultId` names the [result document](result-document.md).
 
@@ -340,11 +346,27 @@ When the job completes, its `resultId` names the [result document](result-docume
 }
 ```
 
-| Field            | Type    | Required | Default | Description                                                                                                                                |
-| ---------------- | ------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `idempotencyKey` | string  | yes      |         | 1–200 characters. See [Idempotency](jobs.md#idempotency).                                                                                  |
-| `asOf`           | string  | no       | now     | ISO-8601 UTC (`Z`). Must not be in the future. The forecast window starts at the start of this UTC day, and the season is derived from it. |
-| `horizonHours`   | integer | no       | `168`   | 1–168. Length of the forecast window.                                                                                                      |
+A managed refresh from the live stack, with machine snow predicted over the forecast:
+
+```json
+{
+  "idempotencyKey": "docs/refresh/blue-mountain-pa/2026-02-20/managed",
+  "asOf": "2026-02-20T06:00:00Z",
+  "horizonHours": 48,
+  "snowmakingForecast": "predicted"
+}
+```
+
+| Field                | Type    | Required | Default   | Description                                                                                                                                                                                                                                           |
+| -------------------- | ------- | -------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idempotencyKey`     | string  | yes      |           | 1–200 characters. See [Idempotency](jobs.md#idempotency).                                                                                                                                                                                             |
+| `asOf`               | string  | no       | now       | ISO-8601 UTC (`Z`). Must not be in the future. The forecast window starts at the start of this UTC day, and the season is derived from it.                                                                                                            |
+| `horizonHours`       | integer | no       | `168`     | 1–168. Length of the forecast window.                                                                                                                                                                                                                 |
+| `scenario`           | string  | no       | see below | `natural`: weather only. `managed`: weather plus the stored observations, applied as grooming and machine snow. See [Observations](../observations.md).                                                                                               |
+| `groomingDefault`    | string  | no       | `none`    | What a managed run assumes on a UTC day with no `groomed` or `not_groomed` observation, and on every night of the forecast after the first day. `none`: no grooming. `nightly`: one pass at 04:00 resort time. Ignored on a natural refresh.          |
+| `snowmakingForecast` | string  | no       | `none`    | `none`: no machine snow over the forecast. `predicted`: add the machine snow the resort is likely to make, from how much of the recent cold it used (see [`managed.forecast.snowmaking`](result-document.md#forecast)). Ignored on a natural refresh. |
+
+**`scenario`'s default** is `managed` when the service holds any observation for this resort in the season containing `asOf` (an observation's season is the one its `validFrom` falls in), and `natural` otherwise. It is resolved when the job is created and stored with it, so a retry with the same key does the same work even if observations have arrived since. To apply newly stored observations, refresh with a new key. Because the default can change under you, state `scenario` when you need a particular one. The job body (`GET /v1/jobs/:id`) doesn't show the resolved scenario; the result's [`scenario`](result-document.md#top-level) does.
 
 The result's window runs from `startOfUtcDay(asOf)` to `startOfUtcDay(asOf) + horizonHours`. Because `asOf` is rounded down to midnight UTC, the first hours of the window may already be in the past. `provenance.weatherKind` in the result tells you whether the window's weather was archived, forecast or a mix.
 
@@ -354,13 +376,343 @@ To run a **hindcast**, set `asOf` in the past. If the whole window has passed, t
 
 **Errors**
 
-| Status | `error`                | When                                                       |
-| ------ | ---------------------- | ---------------------------------------------------------- |
-| `404`  | `not_found`            | Unknown resort.                                            |
-| `400`  | `bad_request`          | Body fails validation; `asOf` is in the future.            |
-| `409`  | `idempotency_conflict` | `idempotencyKey` was already used for a different request. |
+| Status | `error`                | When                                                                                                                               |
+| ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `404`  | `not_found`            | Unknown resort.                                                                                                                    |
+| `400`  | `bad_request`          | Body fails validation (including an unknown `scenario`, `groomingDefault` or `snowmakingForecast` value); `asOf` is in the future. |
+| `409`  | `idempotency_conflict` | `idempotencyKey` was already used for a different request.                                                                         |
 
-If the season was never initialized (or was initialized under an older `configVersion`), the request is accepted and the job ends `blocked` with reason `not_initialized`. See [Jobs](jobs.md#blocked-reasons).
+If the season was never initialized (or was initialized under an older `configVersion`), the request is accepted and the job ends `blocked` with reason `not_initialized`. A managed refresh needs the same initialized season. See [Jobs](jobs.md#blocked-reasons).
+
+## `POST /v1/resorts/:id/observations`
+
+Stores a batch of grooming, snowmaking and base-depth observations for one resort. No model runs: the next [managed refresh](#post-v1resortsidrefresh) applies them. [Observations](../observations.md) explains how each kind is used.
+
+Send only what the service hasn't seen. [`GET /v1/resorts/:id/observations/latest`](#get-v1resortsidobservationslatest) says what it holds. Send "nothing seen" records too (a camera that couldn't tell, a report with no depth): they are stored like any other, and never read as "not groomed" or "no snow".
+
+Records are stored as received and never deleted. Sending a `key` the resort already has, with different content, stores a new **revision** of it; the highest revision is the one in force. Sending the same content again changes nothing.
+
+**Path parameters**: `id`, the resort id.
+
+**Request body** (from the live stack)
+
+```json
+{
+  "idempotencyKey": "docs/blue-mountain-pa/obs/2026-02-21T12:00Z",
+  "through": "2026-02-21T12:00:00Z",
+  "observations": [
+    {
+      "kind": "grooming",
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "skiDay": "2026-02-21",
+      "status": "unknown",
+      "validFrom": "2026-02-21T11:00:00Z",
+      "elevationM": 470,
+      "source": "webcam",
+      "observedAt": "2026-02-21T11:00:00Z"
+    },
+    {
+      "kind": "snowmaking",
+      "key": "docs/snowmaking/bm-summit/2026-02-21",
+      "skiDay": "2026-02-21",
+      "status": "not_observed",
+      "validFrom": "2026-02-21T00:30:00Z",
+      "validTo": "2026-02-21T10:30:00Z",
+      "positiveSamples": 0,
+      "samples": 12,
+      "elevationM": 470,
+      "source": "webcam",
+      "observedAt": "2026-02-21T10:30:00Z"
+    },
+    {
+      "kind": "base_depth",
+      "key": "docs/base_depth/resort/2026-02-21",
+      "skiDay": "2026-02-21",
+      "status": "not_reported",
+      "location": "resort",
+      "validFrom": "2026-02-21T11:30:00Z",
+      "source": "resort-website",
+      "observedAt": "2026-02-21T12:00:00Z"
+    }
+  ]
+}
+```
+
+| Field            | Type   | Required | Description                                                                                                                                                                                        |
+| ---------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idempotencyKey` | string | yes      | 1–200 characters. Makes the request safe to retry; see [Idempotency](#observation-batch-idempotency) below. Keys are global across resorts.                                                        |
+| `through`        | string | yes      | ISO-8601 UTC (`Z`). You have sent everything observed up to this time. It tells "nothing sent yet" from "nothing observed", and comes back as `provenance.observationsThrough` on managed results. |
+| `observations`   | array  | yes      | 0–5000 observations. An empty array is allowed: it only records `through`. No `key` may appear twice.                                                                                              |
+
+Every observation has these fields:
+
+| Field        | Type   | Required | Description                                                                                                                                                                         |
+| ------------ | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kind`       | string | yes      | `grooming`, `snowmaking` or `base_depth`.                                                                                                                                           |
+| `key`        | string | yes      | 1–200 characters. The record's identity on your side, unique within the resort. Sending it again with different content amends it.                                                  |
+| `skiDay`     | string | yes      | `YYYY-MM-DD`, the resort-local riding day the observation is about. Stored and returned; the model places an observation by `validFrom`, not `skiDay`.                              |
+| `status`     | string | yes      | Depends on `kind`; see below.                                                                                                                                                       |
+| `validFrom`  | string | yes      | ISO-8601 UTC (`Z`). When it happened: the sighting, the start of a snowmaking window, or when the resort updated its report. The model applies grooming to the UTC day it falls in. |
+| `validTo`    | string | no       | ISO-8601 UTC (`Z`). End of a window, not before `validFrom`. Leave it out for a point in time.                                                                                      |
+| `observedAt` | string | yes      | ISO-8601 UTC (`Z`). When the observation was made, which can be later than `validFrom`.                                                                                             |
+| `source`     | string | yes      | `webcam`, `resort-website` or `human`.                                                                                                                                              |
+| `location`   | string | no       | `base`, `mid`, `summit` or `resort`. Which model point it applies to; see below.                                                                                                    |
+| `elevationM` | number | no       | Elevation the observation was made at, m. Used when `location` is absent.                                                                                                           |
+| `note`       | string | no       | Up to 2000 characters of free text. Stored and returned, never interpreted.                                                                                                         |
+
+Fields by kind:
+
+| `kind`       | `status` values                           | Extra fields                                                                                                                                                                                                                                                           |
+| ------------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grooming`   | `groomed`, `not_groomed`, `unknown`       | None. Send `not_groomed` only when someone watched the whole night; a camera that saw nothing sends `unknown`.                                                                                                                                                         |
+| `snowmaking` | `observed`, `not_observed`, `unknown`     | `positiveSamples`, `samples`: optional non-negative integers, how many of the images checked showed guns running. Stored, not used by the model.                                                                                                                       |
+| `base_depth` | `reported`, `not_reported`, `unavailable` | `depthCm`: the resort's base depth, 0–2000 cm, **required** when `status` is `reported`. `measuredWhere`: optional, up to 200 characters, where the resort says it measures. `not_reported`: the report was read and had no depth. `unavailable`: it couldn't be read. |
+
+Metric only: convert a resort's inches to cm before sending. Unknown fields are accepted and dropped; they aren't stored.
+
+**Which model point an observation applies to**
+
+| The observation carries          | It applies to                                                                                                        |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `location` `base`/`mid`/`summit` | That point if the resort has it. Otherwise the point nearest the resort's base, summit or halfway elevation (`mid`). |
+| `location` `resort`, or nothing  | Every point, unless it has `elevationM`.                                                                             |
+| `elevationM` (no `location`)     | The point nearest that elevation.                                                                                    |
+
+Each observation is stored in the season its `validFrom` falls in.
+
+**Responses**
+
+- `201 Created`: a new batch was stored.
+- `200 OK`: a retry of a batch already stored. The body is the original response, unchanged.
+
+There's no `Location` header. The `201` for the batch above:
+
+```json
+{
+  "batchId": "2e650e03-1a05-4181-ab78-bf1aa5605c6e",
+  "resort": "blue-mountain-pa",
+  "through": "2026-02-21T12:00:00.000Z",
+  "counts": { "accepted": 3, "amended": 0, "unchanged": 0 },
+  "results": [
+    {
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "outcome": "accepted",
+      "revision": 1
+    },
+    {
+      "key": "docs/snowmaking/bm-summit/2026-02-21",
+      "outcome": "accepted",
+      "revision": 1
+    },
+    {
+      "key": "docs/base_depth/resort/2026-02-21",
+      "outcome": "accepted",
+      "revision": 1
+    }
+  ],
+  "earliestAffected": "2026-02-21T00:30:00.000Z"
+}
+```
+
+A later batch (new idempotency key) that resends all three, with a staff note added to the grooming record:
+
+```json
+{
+  "batchId": "f7596c82-9891-4b84-9fa9-81fc3fe98996",
+  "resort": "blue-mountain-pa",
+  "through": "2026-02-21T15:00:00.000Z",
+  "counts": { "accepted": 0, "amended": 1, "unchanged": 2 },
+  "results": [
+    {
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "outcome": "amended",
+      "revision": 2
+    },
+    {
+      "key": "docs/snowmaking/bm-summit/2026-02-21",
+      "outcome": "unchanged",
+      "revision": 1
+    },
+    {
+      "key": "docs/base_depth/resort/2026-02-21",
+      "outcome": "unchanged",
+      "revision": 1
+    }
+  ],
+  "earliestAffected": "2026-02-21T11:00:00.000Z"
+}
+```
+
+| Field                | Type           | Description                                                                                                                                                               |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batchId`            | string (UUID)  | Id of the stored batch.                                                                                                                                                   |
+| `resort`             | string         | Resort id.                                                                                                                                                                |
+| `through`            | string         | The request's `through`, normalized to `…T12:00:00.000Z` form.                                                                                                            |
+| `counts.accepted`    | integer        | Records with a key the resort didn't have, stored as revision 1.                                                                                                          |
+| `counts.amended`     | integer        | Records whose content differed from the revision in force, stored as the next revision.                                                                                   |
+| `counts.unchanged`   | integer        | Records identical to the revision in force. Nothing was stored for them.                                                                                                  |
+| `results[]`          | array          | One entry per observation, in request order.                                                                                                                              |
+| `results[].key`      | string         | The observation's `key`.                                                                                                                                                  |
+| `results[].outcome`  | string         | `accepted`, `amended` or `unchanged`.                                                                                                                                     |
+| `results[].revision` | integer        | The revision now in force for that key.                                                                                                                                   |
+| `earliestAffected`   | string \| null | The earliest `validFrom` among the accepted and amended records; `null` when nothing changed. The next managed refresh re-runs the managed snowpack from that UTC day on. |
+
+"Different content" is compared field by field on the validated record, with times compared as strings: changing `"2026-02-21T11:30:00Z"` to `"2026-02-21T11:30:00.000Z"` amends a record even though the instant is the same. Send times in one form.
+
+### Observation batch idempotency
+
+- **Same key, same body**: `200` with the stored response. Nothing is stored again. Unknown fields don't count, since they are dropped before comparing.
+- **Same key, different body** (including a different `through`, or the same body sent to another resort): `409 idempotency_conflict`. This `409` has no `details`.
+- **New key**: the batch is processed and `201` returned, even if every record is `unchanged`.
+
+**Errors**
+
+| Status | `error`                | When                                                                                                                                                                                                                                                  |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `404`  | `not_found`            | Unknown resort.                                                                                                                                                                                                                                       |
+| `400`  | `bad_request`          | Body fails validation: a missing field, an unknown `kind`, `status`, `source` or `location`, a time not in UTC `Z` form, a `reported` base depth without `depthCm`, more than 5000 records; a `key` twice in the batch; `validTo` before `validFrom`. |
+| `409`  | `idempotency_conflict` | `idempotencyKey` was already used for a different batch.                                                                                                                                                                                              |
+
+## `GET /v1/resorts/:id/observations/latest`
+
+What the service holds for a resort: the newest record of each kind, and the latest `through` you stated. Use it to send only what is newer. Covers every season.
+
+**Path parameters**: `id`, the resort id.
+
+**Response** `200` (from the live stack, after the batches above)
+
+```json
+{
+  "resort": "blue-mountain-pa",
+  "through": "2026-02-21T15:00:00.000Z",
+  "lastChangedAt": "2026-11-14T22:13:39.460Z",
+  "latest": {
+    "grooming": {
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "kind": "grooming",
+      "note": "Staff: the summit camera was iced over; no call either way.",
+      "skiDay": "2026-02-21",
+      "source": "human",
+      "status": "unknown",
+      "validFrom": "2026-02-21T11:00:00Z",
+      "elevationM": 470,
+      "observedAt": "2026-02-21T14:45:00Z",
+      "revision": 2,
+      "season": "2025/26",
+      "receivedAt": "2026-11-14T22:13:39.460Z"
+    },
+    "snowmaking": { "key": "docs/snowmaking/bm-summit/2026-02-21", "…": "…" },
+    "base_depth": { "key": "docs/base_depth/resort/2026-02-21", "…": "…" }
+  },
+  "counts": { "grooming": 9, "snowmaking": 5, "base_depth": 14 }
+}
+```
+
+A resort with nothing stored (El Colorado on the live stack):
+
+```json
+{
+  "resort": "el-colorado-cl",
+  "through": null,
+  "lastChangedAt": null,
+  "latest": { "grooming": null, "snowmaking": null, "base_depth": null },
+  "counts": { "grooming": 0, "snowmaking": 0, "base_depth": 0 }
+}
+```
+
+| Field               | Type           | Description                                                                                                                                                                                       |
+| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `resort`            | string         | Resort id.                                                                                                                                                                                        |
+| `through`           | string \| null | The latest `through` of any batch stored for the resort. A batch with an earlier `through` doesn't lower it. `null` before the first batch.                                                       |
+| `lastChangedAt`     | string \| null | When a record was last accepted or amended (a batch of only `unchanged` records doesn't move it). Compare it with when you made a result to tell whether the result used what is stored now.      |
+| `latest.grooming`   | object \| null | The record in force whose period ends latest (`validTo`, or `validFrom` for a point in time), as an [observation](#observation-as-returned). It can be a "nothing seen" record. `null` when none. |
+| `latest.snowmaking` | object \| null | The same, for snowmaking.                                                                                                                                                                         |
+| `latest.base_depth` | object \| null | The same, for base depth.                                                                                                                                                                         |
+| `counts`            | object         | Number of keys stored per kind (`grooming`, `snowmaking`, `base_depth`), counting each key once whatever its revisions.                                                                           |
+
+### Observation as returned
+
+An observation in a response is the record as you sent it, after validation (unknown fields dropped, times as the strings you sent), plus:
+
+| Field        | Type    | Description                                                    |
+| ------------ | ------- | -------------------------------------------------------------- |
+| `revision`   | integer | 1 for the first version of a key, then 2, 3… for amendments.   |
+| `season`     | string  | The season `validFrom` falls in, in response form (`2025/26`). |
+| `receivedAt` | string  | When this revision was stored.                                 |
+
+Field order isn't preserved.
+
+**Errors**: `404 not_found` if the resort doesn't exist.
+
+## `GET /v1/resorts/:id/observations`
+
+Lists stored observations, oldest `validFrom` first (then by `key` and `revision`), across every season. There's no paging.
+
+**Query parameters**
+
+| Name        | Default   | Description                                                                                                                          |
+| ----------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `kind`      | all kinds | `grooming`, `snowmaking` or `base_depth`.                                                                                            |
+| `from`      | none      | ISO-8601 UTC (`Z`). Keeps records whose period ends at or after it (`validTo`, or `validFrom` for a point in time).                  |
+| `to`        | none      | ISO-8601 UTC (`Z`). Keeps records whose period starts at or before it. With `from`, this returns every record overlapping the range. |
+| `revisions` | `current` | `current`: only the revision in force for each key. `all`: every revision, superseded ones included.                                 |
+
+Unlike the weather endpoint's `start`/`end`, `from` and `to` must be full UTC times with `Z`: a bare date or an offset is `400`.
+
+**Example** (from the live stack)
+
+```sh
+curl -s 'http://127.0.0.1:8090/v1/resorts/blue-mountain-pa/observations?kind=grooming&from=2026-02-21T00:00:00Z&revisions=all'
+```
+
+**Response** `200`
+
+```json
+{
+  "resort": "blue-mountain-pa",
+  "observations": [
+    {
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "kind": "grooming",
+      "skiDay": "2026-02-21",
+      "source": "webcam",
+      "status": "unknown",
+      "validFrom": "2026-02-21T11:00:00Z",
+      "elevationM": 470,
+      "observedAt": "2026-02-21T11:00:00Z",
+      "revision": 1,
+      "season": "2025/26",
+      "receivedAt": "2026-11-14T22:13:32.430Z"
+    },
+    {
+      "key": "docs/grooming/bm-summit/2026-02-21",
+      "kind": "grooming",
+      "note": "Staff: the summit camera was iced over; no call either way.",
+      "skiDay": "2026-02-21",
+      "source": "human",
+      "status": "unknown",
+      "validFrom": "2026-02-21T11:00:00Z",
+      "elevationM": 470,
+      "observedAt": "2026-02-21T14:45:00Z",
+      "revision": 2,
+      "season": "2025/26",
+      "receivedAt": "2026-11-14T22:13:39.460Z"
+    }
+  ]
+}
+```
+
+| Field          | Type   | Description                                                                    |
+| -------------- | ------ | ------------------------------------------------------------------------------ |
+| `resort`       | string | Resort id.                                                                     |
+| `observations` | array  | Matching records, each an [observation as returned](#observation-as-returned). |
+
+**Errors**
+
+| Status | `error`       | When                                                                                      |
+| ------ | ------------- | ----------------------------------------------------------------------------------------- |
+| `404`  | `not_found`   | Unknown resort.                                                                           |
+| `400`  | `bad_request` | Unknown `kind` or `revisions` value; `from` or `to` is not an ISO-8601 UTC time with `Z`. |
 
 ## `GET /v1/jobs/:id`
 
@@ -429,7 +781,7 @@ Full documents are large, mostly because of the profiles. A 48-hour, three-point
 
 Returns the most recently created result document for a resort, across all seasons. Takes the same `profileDepthCm` query parameter as [`GET /v1/results/:id`](#get-v1resultsid).
 
-"Most recent" means most recently **generated**, not the latest `asOf`. If you ran a hindcast after today's refresh, this returns the hindcast. To be certain which result you get, use the `resultId` from your job.
+"Most recent" means most recently **generated**, not the latest `asOf`, and natural and managed results count alike. If you ran a hindcast or a `scenario: "natural"` refresh after today's managed one, this returns that. Check the document's `scenario`, or use the `resultId` from your job to be certain which result you get.
 
 **Errors**: `404 not_found` (`"no such result"`) if the resort has no results, including when the resort id doesn't exist. `400 bad_request` for an invalid `profileDepthCm`.
 
@@ -446,24 +798,26 @@ Downloads a native file from a single SNOWPACK run, for debugging or for tools t
 
 Any file in the run directory can be fetched, including the inputs under `input/` (for example `input/BASE.smet`, the forcing file).
 
+A managed result's forecast is two SNOWPACK runs per point: the window's first UTC day, then the rest (see [Jobs: managed refreshes](jobs.md#managed-refreshes)). `files` names only the **first** of them, so its `.smet` and `.pro` end at `window.from` + 24 hours, while the result's `met` and `profiles` cover the whole window.
+
 ```sh
 curl -s http://127.0.0.1:8090/v1/runs/f5e683d4-3086-402f-8bea-5b85ac617847/files/output/BASE_run.pro
 ```
 
 **Response** `200`, `content-type: text/plain; charset=utf-8`, with the file's contents. These files are in SNOWPACK's **native SI units** (K, m, fractions), not the API's metric units.
 
-| File                                         | Contents                                                                                                                  |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `io.ini`                                     | The SNOWPACK and [MeteoIO](https://meteoio.slf.ch/doc-release/html/index.html) configuration used for the run.            |
-| `input/<POINT>.smet`                         | Weather forcing in [SMET](https://meteoio.slf.ch/doc-release/html/smetio.html), MeteoIO's plain-text station data format. |
-| `input/<POINT>.sno`                          | The initial snowpack state ([`.sno` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                   |
-| `output/<POINT>_run.smet`                    | SNOWPACK's hourly time series ([fluxes time series](https://snowpack.slf.ch/doc-release/html/met_format.html)).           |
-| `output/<POINT>_run.pro`                     | Snow profiles ([`.pro` format](https://snowpack.slf.ch/doc-release/html/pro_format.html)).                                |
-| `output/<POINT>_run.sno`                     | The final snowpack state.                                                                                                 |
-| `output/<POINT>_run.haz`                     | SNOWPACK's hazard output ([`.haz` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                     |
-| `output/<POINT>_run.ini`                     | The complete configuration as SNOWPACK resolved it, defaults included.                                                    |
-| `weather-sources.json`                       | The Open-Meteo requests whose responses went into the forcing, with their retrieval times. Not listed in `names`.         |
-| `snowpack.stdout.log`, `snowpack.stderr.log` | SNOWPACK's console output, for debugging a failed run. Not listed in `names`.                                             |
+| File                                         | Contents                                                                                                                                                                                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `io.ini`                                     | The SNOWPACK and [MeteoIO](https://meteoio.slf.ch/doc-release/html/index.html) configuration used for the run. A managed run that grooms adds a `[TechSnow]` section with `SNOW_GROOMING = true` and the UTC `GROOMING_HOUR`.                                                |
+| `input/<POINT>.smet`                         | Weather forcing in [SMET](https://meteoio.slf.ch/doc-release/html/smetio.html), MeteoIO's plain-text station data format. A managed run with machine snow adds a `PSUM_TECH` column, SNOWPACK's technical-snow input: `1.000` on hours with machine snow, `0.000` elsewhere. |
+| `input/<POINT>.sno`                          | The initial snowpack state ([`.sno` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                                                                                                                                                                      |
+| `output/<POINT>_run.smet`                    | SNOWPACK's hourly time series ([fluxes time series](https://snowpack.slf.ch/doc-release/html/met_format.html)).                                                                                                                                                              |
+| `output/<POINT>_run.pro`                     | Snow profiles ([`.pro` format](https://snowpack.slf.ch/doc-release/html/pro_format.html)).                                                                                                                                                                                   |
+| `output/<POINT>_run.sno`                     | The final snowpack state.                                                                                                                                                                                                                                                    |
+| `output/<POINT>_run.haz`                     | SNOWPACK's hazard output ([`.haz` format](https://snowpack.slf.ch/doc-release/html/snowpackio.html)).                                                                                                                                                                        |
+| `output/<POINT>_run.ini`                     | The complete configuration as SNOWPACK resolved it, defaults included.                                                                                                                                                                                                       |
+| `weather-sources.json`                       | The Open-Meteo requests whose responses went into the forcing, with their retrieval times. Not listed in `names`.                                                                                                                                                            |
+| `snowpack.stdout.log`, `snowpack.stderr.log` | SNOWPACK's console output, for debugging a failed run. Not listed in `names`.                                                                                                                                                                                                |
 
 `<POINT>` is the point id in upper case (`BASE`, `MID`, `SUMMIT`).
 

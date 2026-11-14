@@ -45,53 +45,65 @@ All numbers are metric and name their unit (see [Units](overview.md#units)). Fie
 
 ## Top level
 
-| Field                  | Type          | Description                                                                                            |
-| ---------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| `schemaVersion`        | string        | Always `groomrs-snow-model/v1` for this contract.                                                      |
-| `id`                   | string (UUID) | Result id.                                                                                             |
-| `jobId`                | string (UUID) | The refresh job that produced it.                                                                      |
-| `resort.id`            | string        | Resort id.                                                                                             |
-| `resort.configVersion` | string        | The resort [`configVersion`](overview.md#resorts-and-model-points) the result was computed with.       |
-| `season`               | string        | Season, e.g. `2025/26` or `2026`.                                                                      |
-| `asOf`                 | string        | The refresh's resolved `asOf`, unrounded.                                                              |
-| `window.from`          | string        | Start of the forecast window: midnight UTC of `asOf`'s day. Also the time of the starting state.       |
-| `window.to`            | string        | End of the window, inclusive: `window.from` + `horizonHours`.                                          |
-| `generatedAt`          | string        | When the document was written.                                                                         |
-| `scenario`             | string        | Always `natural` in Stage 1: natural snow, no snowmaking or grooming. Other values may be added later. |
-| `provenance`           | object        | Where the data came from. See below.                                                                   |
-| `points`               | array         | One entry per resort model point, in the resort's point order. See [Point](#point).                    |
-| `dataGaps`             | array         | Weather variables with missing hours. See [Data gaps](#data-gaps).                                     |
+| Field                  | Type          | Description                                                                                                                                                                                                    |
+| ---------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`        | string        | Always `groomrs-snow-model/v1` for this contract.                                                                                                                                                              |
+| `id`                   | string (UUID) | Result id.                                                                                                                                                                                                     |
+| `jobId`                | string (UUID) | The refresh job that produced it.                                                                                                                                                                              |
+| `resort.id`            | string        | Resort id.                                                                                                                                                                                                     |
+| `resort.configVersion` | string        | The resort [`configVersion`](overview.md#resorts-and-model-points) the result was computed with.                                                                                                               |
+| `season`               | string        | Season, e.g. `2025/26` or `2026`.                                                                                                                                                                              |
+| `asOf`                 | string        | The refresh's resolved `asOf`, unrounded.                                                                                                                                                                      |
+| `window.from`          | string        | Start of the forecast window: midnight UTC of `asOf`'s day. Also the time of the starting state.                                                                                                               |
+| `window.to`            | string        | End of the window, inclusive: `window.from` + `horizonHours`.                                                                                                                                                  |
+| `generatedAt`          | string        | When the document was written.                                                                                                                                                                                 |
+| `scenario`             | string        | `natural`: weather only, no grooming or machine snow. `managed`: the stored observations were applied as grooming and machine snow, and each point carries [`managed`](#managed). See [Scenarios](#scenarios). |
+| `provenance`           | object        | Where the data came from. See below.                                                                                                                                                                           |
+| `points`               | array         | One entry per resort model point, in the resort's point order. See [Point](#point).                                                                                                                            |
+| `dataGaps`             | array         | Weather variables with missing hours. See [Data gaps](#data-gaps).                                                                                                                                             |
 
 ### `provenance`
 
-| Field                | Type   | Description                                                                                                                                   |
-| -------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `weatherProvider`    | string | Always `open-meteo`.                                                                                                                          |
-| `weatherModel`       | string | Open-Meteo model, e.g. `ecmwf_ifs025`.                                                                                                        |
-| `weatherRetrievedAt` | string | The oldest retrieval time of the weather used across all points.                                                                              |
-| `weatherKind`        | string | `archived` if the whole window had passed at `weatherRetrievedAt` (a hindcast), `forecast` if all of it was in the future, `mixed` otherwise. |
-| `snowpackVersion`    | string | SNOWPACK version used.                                                                                                                        |
-| `serviceVersion`     | string | Version of this service.                                                                                                                      |
+| Field                 | Type           | Description                                                                                                                                                                                                                 |
+| --------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `weatherProvider`     | string         | Always `open-meteo`.                                                                                                                                                                                                        |
+| `weatherModel`        | string         | Open-Meteo model, e.g. `ecmwf_ifs025`.                                                                                                                                                                                      |
+| `weatherRetrievedAt`  | string         | The oldest retrieval time of the weather used across all points.                                                                                                                                                            |
+| `weatherKind`         | string         | `archived` if the whole window had passed at `weatherRetrievedAt` (a hindcast), `forecast` if all of it was in the future, `mixed` otherwise.                                                                               |
+| `snowpackVersion`     | string         | SNOWPACK version used.                                                                                                                                                                                                      |
+| `serviceVersion`      | string         | Version of this service.                                                                                                                                                                                                    |
+| `observationsThrough` | string \| null | Managed results only (absent on natural ones). The latest `through` any observation batch for the resort stated when the result was made: you had sent everything observed up to here. `null` if the resort has no batches. |
+| `managedRulesVersion` | string         | Managed results only. Names the version of the rules that turn observations into grooming and machine snow, for example `managed/1`. It changes when a rule changes what the same observations produce.                     |
+
+### Scenarios
+
+| `scenario` | What the snowpack is                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `natural`  | Weather only: an undisturbed, flat, open-field snow column. No grooming and no machine snow.                                                                                                           |
+| `managed`  | The same weather, plus the grooming and machine snow the stored observations imply, applied day by day from the season's spin-up state. Every point's `state`, `met` and `profiles` are this snowpack. |
+
+The refresh request picks the scenario (see [`scenario`](endpoints.md#post-v1resortsidrefresh)). Both come from the same lineage, and a managed refresh keeps the natural state current too, so `managed.naturalSnowDepthCm` matches the `state.snowDepthCm` of a natural refresh for the same `asOf`. [Observations](../observations.md) explains how observations become grooming and machine snow.
 
 ## Point
 
-| Field        | Type   | Description                                                             |
-| ------------ | ------ | ----------------------------------------------------------------------- |
-| `id`         | string | `base`, `mid` or `summit`.                                              |
-| `elevationM` | number | Elevation of the modelled column, m.                                    |
-| `state`      | object | The saved snowpack state the forecast started from.                     |
-| `forcing`    | array  | Hourly weather fed to SNOWPACK. See [Forcing](#forcing-hourly-weather). |
-| `met`        | array  | SNOWPACK's hourly output. See [Met](#met-hourly-snowpack-series).       |
-| `profiles`   | array  | Layer profiles every 3 hours. See [Profiles](#profiles).                |
-| `files`      | object | The forecast run's id and native files. See [`files`](#files).          |
+| Field        | Type   | Description                                                                      |
+| ------------ | ------ | -------------------------------------------------------------------------------- |
+| `id`         | string | `base`, `mid` or `summit`.                                                       |
+| `elevationM` | number | Elevation of the modelled column, m.                                             |
+| `state`      | object | The saved snowpack state the forecast started from.                              |
+| `forcing`    | array  | Hourly weather fed to SNOWPACK. See [Forcing](#forcing-hourly-weather).          |
+| `met`        | array  | SNOWPACK's hourly output. See [Met](#met-hourly-snowpack-series).                |
+| `profiles`   | array  | Layer profiles every 3 hours. See [Profiles](#profiles).                         |
+| `files`      | object | The forecast run's id and native files. See [`files`](#files).                   |
+| `managed`    | object | Managed results only: what was applied at this point. See [`managed`](#managed). |
 
 ### `state`
 
-| Field                 | Type          | Description                                                                                           |
-| --------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
-| `lineageId`           | string (UUID) | The initialize job this state descends from. See [Re-initializing](jobs.md#re-initializing-a-season). |
-| `checkpointValidTime` | string        | When the state is valid. Equal to `window.from`.                                                      |
-| `snowDepthCm`         | number        | Modelled snow depth at the checkpoint, cm.                                                            |
+| Field                 | Type          | Description                                                                                                                                       |
+| --------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lineageId`           | string (UUID) | The initialize job this state descends from. See [Re-initializing](jobs.md#re-initializing-a-season).                                             |
+| `checkpointValidTime` | string        | When the state is valid. Equal to `window.from`.                                                                                                  |
+| `snowDepthCm`         | number        | Modelled snow depth at the checkpoint, cm. On a managed result, the managed snowpack's depth; `managed.naturalSnowDepthCm` gives the natural one. |
 
 ### Time series alignment
 
@@ -230,22 +242,214 @@ Grain types follow [The International Classification for Seasonal Snow on the Gr
 | 9          | `FCxr` | Rounding faceted particles, a subclass of FC. Common in mid-winter: `990`, `951`, `490`, `491`.                         |
 | 0          | `PPgp` | Graupel, a subclass of PP. SNOWPACK writes graupel as `000`, but the SNOWPACK version in use (3.7.0) never produces it. |
 
-If F3 is `6` (code `006`, dry technical snow), both values are `MM`, ICSSG's machine-made snow class. Once technical snow has been wetted, SNOWPACK gives it ordinary melt-form codes, so its grain code no longer distinguishes it from natural snow. Neither can happen while results model natural snow only (`scenario: "natural"`).
+If F3 is `6` (dry technical snow, which SNOWPACK writes as `006`, so `grainTypeCode` is `6`), both values are `MM`, ICSSG's machine-made snow class. Machine-made layers appear only in managed results. Once technical snow has been wetted, SNOWPACK gives it ordinary melt-form codes, so its grain code no longer distinguishes it from natural snow. In the Blue Mountain example below, the summit's first profile (20 February, 00:00) holds 74 `MM` layers, while the base, whose machine snow had been rained on, holds none: all of it reads `770` (`MF`). Use [`managed.technicalSnow`](#technicalsnow) to know machine snow was added, not the grain code.
 
 Examples:
 
 - `240` is primary `DF`, secondary `FC`.
 - `491` is `FC`, `FCxr`.
 - `772` is `MF`, `MF`, with F3 = 2: a melt-freeze crust.
+- `6` (written `006`) is `MM`, `MM`: dry machine-made snow.
 
 Clients that group by the main ICSSG class can take the first two letters of the value (`FCxr` → `FC`, `PPgp` → `PP`).
 
 ### `files`
 
-| Field   | Type          | Description                                                                                                              |
-| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `runId` | string (UUID) | The point's forecast run.                                                                                                |
-| `names` | string[]      | Paths of its native files, downloadable from [`GET /v1/runs/:runId/files/*path`](endpoints.md#get-v1runsrunidfilespath). |
+| Field   | Type          | Description                                                                                                                                         |
+| ------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runId` | string (UUID) | The point's forecast run. On a managed result, the run for the window's first UTC day only; see [run files](endpoints.md#get-v1runsrunidfilespath). |
+| `names` | string[]      | Paths of its native files, downloadable from [`GET /v1/runs/:runId/files/*path`](endpoints.md#get-v1runsrunidfilespath).                            |
+
+### `managed`
+
+Present on every point of a managed result, absent on a natural one. It says what the managed snowpack was given at this point and why. It reports inputs and their sources; it doesn't judge the result.
+
+Example: Blue Mountain's summit, a managed refresh for 20 February 2026 with `snowmakingForecast: "predicted"` (job `3eb2ecd0-…`, result `42d0d4c8-…`, from the live stack; long arrays snipped):
+
+```json
+"managed": {
+  "naturalSnowDepthCm": 20.13,
+  "appliedFrom": "2026-02-01T00:00:00.000Z",
+  "groomedNights": [
+    {
+      "time": "2026-02-19T10:00:00.000Z",
+      "basis": "observed",
+      "observationKey": "eval/grooming/bm-summit/2026-02-19",
+      "source": "webcam"
+    }
+  ],
+  "technicalSnow": [
+    { "day": "2026-02-01", "hours": 1, "basis": ["base_depth"] },
+    "…",
+    { "day": "2026-02-09", "hours": 14, "basis": ["base_depth", "observed"] },
+    "…",
+    { "day": "2026-02-15", "hours": 3, "basis": ["observed"] },
+    "…"
+  ],
+  "baseDepth": [
+    {
+      "observationKey": "eval/base_depth/resort/2026-02-08",
+      "comparedAt": "2026-02-09T00:00:00.000Z",
+      "reportedCm": 61,
+      "modelledBeforeCm": 23.4,
+      "modelledAfterCm": 36.8,
+      "addedHours": 24,
+      "removedHours": 0,
+      "residualCm": 24.2,
+      "note": null
+    },
+    {
+      "observationKey": "eval/base_depth/resort/2026-02-09",
+      "comparedAt": "2026-02-10T00:00:00.000Z",
+      "reportedCm": 66,
+      "modelledBeforeCm": 37.8,
+      "modelledAfterCm": 50.5,
+      "addedHours": 11,
+      "removedHours": 0,
+      "residualCm": 15.5,
+      "note": "ran out of hours cold enough to make snow"
+    },
+    "…"
+  ],
+  "forecast": {
+    "today": {
+      "status": "observed",
+      "time": "2026-02-20T10:00:00.000Z",
+      "observationKey": "eval/grooming/bm-summit/2026-02-20",
+      "source": "webcam"
+    },
+    "laterNights": "none",
+    "snowmaking": {
+      "mode": "predicted",
+      "nights": [],
+      "utilisation": 0.19,
+      "recentColdHours": 250,
+      "recentMachineSnowHours": 48,
+      "depthPerHourCm": 1.08,
+      "reason": "recent_production"
+    }
+  }
+}
+```
+
+The summit's `state.snowDepthCm` in the same result is 72.0 cm, against 20.1 cm natural.
+
+| Field                | Type   | Description                                                                                                                                                                                                                                                                                                         |
+| -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `naturalSnowDepthCm` | number | Depth of the natural snowpack at the same checkpoint (`window.from`), cm. The difference from `state.snowDepthCm` is roughly how much of the pack is made, though grooming also compacts it.                                                                                                                        |
+| `appliedFrom`        | string | Where the managed snowpack starts: the time of the season's spin-up state (the `asOf` day of the [initialize](endpoints.md#post-v1resortsidseasonsseasoninitialize) job that started the lineage). Observations before it are stored but not applied. To apply a longer history, initialize with an earlier `asOf`. |
+| `groomedNights`      | array  | Grooming passes applied before the window, oldest first. See below.                                                                                                                                                                                                                                                 |
+| `technicalSnow`      | array  | Machine snow added before the window, per UTC day. See below.                                                                                                                                                                                                                                                       |
+| `baseDepth`          | array  | How each base-depth reading was answered. See below.                                                                                                                                                                                                                                                                |
+| `forecast`           | object | Grooming and machine snow assumed inside the window. See below.                                                                                                                                                                                                                                                     |
+
+#### `groomedNights`
+
+One entry per UTC day between `appliedFrom` and `window.from` on which the managed snowpack was groomed. A day is groomed when a `groomed` observation's `validFrom` falls in it, or, with `groomingDefault: "nightly"`, when it has no `groomed` or `not_groomed` observation.
+
+| Field            | Type           | Description                                                                                                                                                                  |
+| ---------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `time`           | string         | When the pass was applied: the first whole hour at or after the day's last `groomed` sighting, or 04:00 resort time for an assumed pass. Always between 01:00 and 23:00 UTC. |
+| `basis`          | string         | `observed`: from a `groomed` observation. `default`: assumed from `groomingDefault: "nightly"`.                                                                              |
+| `observationKey` | string \| null | The `key` of the observation behind it; `null` for an assumed pass.                                                                                                          |
+| `source`         | string \| null | Who saw it, the observation's `source` (`webcam` or `human`); `null` for an assumed pass.                                                                                    |
+
+A pass is SNOWPACK's [grooming module][sp-techsnow]: it densifies the snow within 40 cm of the surface. It needs at least 10 cm of snow, and it doesn't add or move snow.
+
+#### `technicalSnow`
+
+One entry per UTC day before the window that got machine snow, oldest first. Machine snow goes into SNOWPACK's technical-snow input ([`PSUM_TECH`][sp-techsnow]), so SNOWPACK builds the layers with the density it gives machine snow. It is only ever placed on hours whose [wet-bulb temperature][wet-bulb] is −2.5 °C or colder. Wet-bulb temperature combines air temperature and humidity (it is the temperature evaporation can cool to), and it is what decides whether snow guns can run; the service computes it from the forcing's `airTempC` and `relativeHumidityPct`.
+
+| Field   | Type     | Description                                                                                                                                   |
+| ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `day`   | string   | UTC day, `YYYY-MM-DD`.                                                                                                                        |
+| `hours` | integer  | Hours of machine snow added that day, at most 14. One cold hour adds about 3 cm.                                                              |
+| `basis` | string[] | Why, sorted: `observed` (inside the window of an `observed` snowmaking sighting) and/or `base_depth` (added to explain a base-depth reading). |
+
+#### `baseDepth`
+
+One entry per `reported` base-depth reading that applies to this point and falls after `appliedFrom`, in the order they were worked through. The service never overwrites the snowpack with the resort's figure. It reads the gap as machine snow the model hasn't accounted for, and adds (or removes) whole hours of machine snow over the 14 days before the reading to close half of it. Gaps of 5 cm or less are left alone. See [Observations: base depth](../observations.md#base-depth).
+
+| Field              | Type           | Description                                                                                                                                                                                                                                                                   |
+| ------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `observationKey`   | string         | The reading's `key`.                                                                                                                                                                                                                                                          |
+| `comparedAt`       | string         | When modelled and reported depth were compared: the end of the UTC day the reading's `validFrom` falls in, or `window.from` if that day isn't over by then.                                                                                                                   |
+| `reportedCm`       | number         | The resort's figure, cm.                                                                                                                                                                                                                                                      |
+| `modelledBeforeCm` | number         | Managed depth at `comparedAt` before this reading was answered, cm (one decimal).                                                                                                                                                                                             |
+| `modelledAfterCm`  | number         | Managed depth at `comparedAt` after the correction, cm. Equal to `modelledBeforeCm` when nothing was changed.                                                                                                                                                                 |
+| `addedHours`       | integer        | Hours of machine snow added to answer this reading.                                                                                                                                                                                                                           |
+| `removedHours`     | integer        | Hours of machine snow taken back, when the model was deeper than the report. Only machine snow is ever removed, so the pack never drops below what the weather left.                                                                                                          |
+| `residualCm`       | number         | `reportedCm` − `modelledAfterCm`, cm: the gap left. Positive means the resort reports more snow than the model holds. It is reported, never forced in.                                                                                                                        |
+| `note`             | string \| null | Why the correction fell short, when it did: `no hours cold enough to make snow in the window`, `ran out of hours cold enough to make snow`, `no machine snow in the window to take back` or `ran out of machine snow to take back`. `null` otherwise. Its wording may change. |
+
+Each reading is answered after the ones before it, so `modelledBeforeCm` already includes the earlier corrections and any snow or melt since.
+
+#### `forecast`
+
+What the managed forecast assumed inside the window. These are assumptions (except `today` when its `status` is `observed` or `not_groomed`), so present them as expected, never as seen.
+
+The window starts at 00:00 UTC, so in most time zones last night's grooming falls inside it. The forecast's first UTC day therefore runs on its own, with whatever was observed for it, and the rest of the window runs on from where it ended. `met` and `profiles` join the two into one series.
+
+| Field         | Type   | Description                                                                                                                |
+| ------------- | ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `today`       | object | Grooming on the window's first UTC day.                                                                                    |
+| `laterNights` | string | Grooming on the remaining nights: `nightly` (a pass at 04:00 resort time each day) or `none`. It echoes `groomingDefault`. |
+| `snowmaking`  | object | Machine snow assumed over the whole window.                                                                                |
+
+`forecast.today`:
+
+| Field            | Type           | Description                                                                                                                                                                                                         |
+| ---------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`         | string         | `observed`: a groomer was seen that day. `default`: a pass is assumed from `groomingDefault: "nightly"`. `not_groomed`: someone watched and saw none, so no pass. `none`: nothing was observed and nothing assumed. |
+| `time`           | string \| null | When the pass is applied (same rule as `groomedNights[].time`); `null` for `not_groomed` and `none`.                                                                                                                |
+| `observationKey` | string \| null | The observation behind `observed`; `null` otherwise.                                                                                                                                                                |
+| `source`         | string \| null | `webcam` or `human` for `observed`; `null` otherwise.                                                                                                                                                               |
+
+`forecast.snowmaking` is a prediction from the resort's own recent record, made only when the refresh asked for `snowmakingForecast: "predicted"`. Over the 14 days before `window.from` it counts the hours cold enough to make snow and the hours the managed snowpack holds machine snow; their ratio, capped at 0.6, is the share of cold hours the resort used. On each forecast day that share of the day's cold hours (coldest first, at most 14) gets machine snow, scaled down by how much depth a recent machine-snow hour actually left against the 3 cm a cold hour makes. Only the forecast copy holds predicted snow; the saved state never does.
+
+| Field                    | Type           | Description                                                                                                                                                                                                                                                |
+| ------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`                   | string         | `predicted` when the refresh asked for it, else `none`.                                                                                                                                                                                                    |
+| `nights`                 | array          | One entry per UTC day of the window with predicted machine snow. Empty when nothing was predicted, including when `reason` is `recent_production` but the forecast has no cold hours.                                                                      |
+| `nights[].day`           | string         | UTC day, `YYYY-MM-DD`.                                                                                                                                                                                                                                     |
+| `nights[].hours`         | integer        | Hours of machine snow that day. They need not be consecutive.                                                                                                                                                                                              |
+| `nights[].from`          | string         | The first of those hours.                                                                                                                                                                                                                                  |
+| `nights[].to`            | string         | The last of those hours.                                                                                                                                                                                                                                   |
+| `utilisation`            | number \| null | Share of recent cold hours the resort made snow in, 0–0.6, two decimals. `0` for `none_recently`; `null` when not requested or for `too_few_cold_hours`.                                                                                                   |
+| `recentColdHours`        | integer        | Hours in the 14 days before the window with a wet-bulb of −2.5 °C or colder. `0` when not requested.                                                                                                                                                       |
+| `recentMachineSnowHours` | integer        | Hours in those 14 days that got machine snow (from `technicalSnow`). `0` when not requested.                                                                                                                                                               |
+| `depthPerHourCm`         | number \| null | Managed minus natural depth at `window.from`, divided by `recentMachineSnowHours`, cm. The predicted hours are scaled by it. `null` when there were no recent machine-snow hours or it wasn't requested.                                                   |
+| `reason`                 | string         | `not_requested`: `snowmakingForecast` was `none`. `recent_production`: predicted from recent use. `none_recently`: no machine snow in the last 14 days, so none is predicted. `too_few_cold_hours`: under 12 cold hours to judge by, so none is predicted. |
+
+A resort with no snowmaking or base-depth observations therefore never gets predicted machine snow. With `groomingDefault: "nightly"` and a forecast that has cold hours, the block looks like this (Blue Mountain's base, refresh for 10 February 2026 on the live stack):
+
+```json
+"forecast": {
+  "today": {
+    "status": "default",
+    "time": "2026-02-10T09:00:00.000Z",
+    "observationKey": null,
+    "source": null
+  },
+  "laterNights": "nightly",
+  "snowmaking": {
+    "mode": "predicted",
+    "nights": [
+      {
+        "day": "2026-02-10",
+        "hours": 1,
+        "from": "2026-02-10T06:00:00.000Z",
+        "to": "2026-02-10T06:00:00.000Z"
+      }
+    ],
+    "utilisation": 0.12,
+    "recentColdHours": 216,
+    "recentMachineSnowHours": 26,
+    "depthPerHourCm": 1.21,
+    "reason": "recent_production"
+  }
+}
+```
 
 ## Data gaps
 
@@ -281,3 +485,5 @@ Clients that group by the main ICSSG class can take the first two letters of the
 [lehning-2]: https://doi.org/10.1016/S0165-232X%2802%2900073-3 'Lehning et al. (2002), A physical SNOWPACK model for the Swiss avalanche warning, Part II: snow microstructure'
 [om-docs]: https://open-meteo.com/en/docs 'Open-Meteo weather forecast API: hourly variables'
 [om-ecmwf]: https://open-meteo.com/en/docs/ecmwf-api 'Open-Meteo ECMWF API'
+[sp-techsnow]: https://snowpack.slf.ch/doc-release/html/technical_snow.html 'SNOWPACK: Technical snow (grooming and snow production)'
+[wet-bulb]: https://en.wikipedia.org/wiki/Wet-bulb_temperature 'Wet-bulb temperature'

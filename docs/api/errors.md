@@ -28,13 +28,13 @@ Validation messages for request bodies name the offending field:
 
 ## Error codes
 
-| Status | `error`                | Returned by                           | Meaning                                                                                             |
-| ------ | ---------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `400`  | `bad_request`          | weather, initialize, refresh, results | A parameter or body field is missing, malformed or out of range.                                    |
-| `404`  | `not_found`            | any endpoint with an id               | No such resort, job, result, run or file. Malformed UUIDs are also `404`.                           |
-| `409`  | `idempotency_conflict` | initialize, refresh                   | The `idempotencyKey` was already used for a different request. `details.jobId` is the existing job. |
-| `502`  | `weather_unavailable`  | weather                               | Open-Meteo could not supply the requested window.                                                   |
-| `503`  | (none)                 | `/health`                             | A dependency is down. The body is the normal health document with `ok: false`.                      |
+| Status | `error`                | Returned by                                                     | Meaning                                                                                                                                                                       |
+| ------ | ---------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400`  | `bad_request`          | weather, initialize, refresh, observations (all three), results | A parameter or body field is missing, malformed or out of range. For an observation batch, also a `key` sent twice or `validTo` before `validFrom`.                           |
+| `404`  | `not_found`            | any endpoint with an id                                         | No such resort, job, result, run or file. Malformed UUIDs are also `404`.                                                                                                     |
+| `409`  | `idempotency_conflict` | initialize, refresh, `POST` observations                        | The `idempotencyKey` was already used for a different request. On initialize and refresh, `details.jobId` is the existing job. An observation batch's `409` has no `details`. |
+| `502`  | `weather_unavailable`  | weather                                                         | Open-Meteo could not supply the requested window.                                                                                                                             |
+| `503`  | (none)                 | `/health`                                                       | A dependency is down. The body is the normal health document with `ok: false`.                                                                                                |
 
 Example `409`:
 
@@ -45,6 +45,26 @@ Example `409`:
   "details": { "jobId": "9465f067-3c87-4485-bb32-0d1af5c3fd6c" }
 }
 ```
+
+Example `409` from [`POST /v1/resorts/:id/observations`](endpoints.md#post-v1resortsidobservations), resending a stored batch's key with a different `through` (live stack):
+
+```json
+{
+  "error": "idempotency_conflict",
+  "message": "idempotency key docs/blue-mountain-pa/obs/2026-02-21T12:00Z was already used for a different batch of observations"
+}
+```
+
+Example `400` for an observation batch. The message gives the record's index, and the field when it can (`→ at observations[0].validFrom` for a time with an offset, `→ at observations[0].skiDay` for a malformed day):
+
+```json
+{
+  "error": "bad_request",
+  "message": "✖ a reported base depth needs depthCm\n  → at observations[2]"
+}
+```
+
+An unknown `kind`, `status`, `source` or `location` gives only `"✖ Invalid input\n  → at observations[0]"`, without the field's name.
 
 ## Framework errors
 
