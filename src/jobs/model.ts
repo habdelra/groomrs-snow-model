@@ -10,6 +10,20 @@ import {
 } from '../contract/v1.ts';
 import { withClient, withTransaction } from '../db.ts';
 import { BlockedError } from '../errors.ts';
+import {
+  defaultGroomingHourUtc,
+  groomingForDay,
+  predictSnowmaking,
+  snowmakingHours,
+  type SnowmakingPrediction,
+  sawNoGroomer,
+  MANAGED_RULES_VERSION,
+  TECH_MM_PER_STEP,
+} from '../observations/plan.ts';
+import {
+  effectiveObservations,
+  reportedThrough,
+} from '../observations/store.ts';
 import type {
   ModelPoint,
   Resort,
@@ -18,11 +32,13 @@ import type {
 import { addHours, spinupStart, startOfUtcDay } from '../season.ts';
 import { bareGroundSno } from '../snowpack/config.ts';
 import {
+  findGaps,
   runPoint,
   type PointRunResult,
   type RunKind,
 } from '../snowpack/point-run.ts';
 import type { OpenMeteoClient } from '../weather/open-meteo.ts';
+import { advanceManaged, type Checkpoint } from './managed.ts';
 import { setProgress, type Job } from './queue.ts';
 
 // Profiles in the result are sampled every few hours over the forecast.
@@ -34,14 +50,6 @@ export interface ModelDeps {
   openMeteo: OpenMeteoClient;
   iniTemplate: string;
   snowpackVersion: string;
-}
-
-interface Checkpoint {
-  id: string;
-  lineageId: string;
-  validTime: Date;
-  snoPath: string;
-  snowDepthCm: number;
 }
 
 // Runs initialize and refresh jobs. Past weather advances a point's saved
@@ -127,6 +135,11 @@ export class SnowModel {
     const points: PointResult[] = [];
     const forecastRuns: PointRunResult[] = [];
     const gaps: ResultDocument['dataGaps'] = [];
+    const managed = job.request.scenario === 'managed';
+    const groomingDefault = job.request.groomingDefault ?? 'none';
+    const observations = managed
+      ? await effectiveObservations(resort.id, { season: job.season })
+      : [];
 
     for (const point of resort.points) {
       progress[point.id] = 'running';
@@ -163,24 +176,171 @@ export class SnowModel {
           checkpoint,
         );
       }
-      const forecast = await runPoint(this.#runDeps(), {
-        resort,
-        point,
-        from: target,
-        to: end,
-        initialSno: await readFile(checkpoint.snoPath, 'utf8'),
-        profileIntervalHours: PROFILE_INTERVAL_HOURS,
-      });
-      await this.#recordRun(
-        job,
-        resort,
-        point,
-        'forecast',
-        target,
-        end,
-        forecast,
-        checkpoint.id,
-      );
+      // The natural state is kept current either way. A managed refresh
+      // forecasts from the managed state instead, and reports the natural
+      // depth beside it.
+      const natural = checkpoint;
+      let applied: PointResult['managed'];
+      let prediction: SnowmakingPrediction | undefined;
+      let managedApplied:
+        | Omit<
+            NonNullable<PointResult['managed']>,
+            'naturalSnowDepthCm' | 'forecast'
+          >
+        | undefined;
+      if (managed) {
+        const outcome = await advanceManaged(this.#managedHost(job, resort), {
+          resort,
+          point,
+          lineageId: natural.lineageId,
+          target,
+          observations,
+          groomingDefault,
+        });
+        if (outcome) {
+          checkpoint = outcome.checkpoint;
+          managedApplied = outcome.applied;
+          // Snowmaking over the forecast, when asked for: the share of the
+          // recent cold the resort used, applied to the cold hours ahead.
+          if (job.request.snowmakingForecast === 'predicted') {
+            const ahead = await this.#deps.openMeteo.hourly(
+              resort,
+              point,
+              target,
+              end,
+            );
+            prediction = predictSnowmaking({
+              target,
+              pastCold: outcome.coldHours,
+              pastMachineSnow: outcome.machineSnowHours,
+              futureCold: snowmakingHours(ahead.hours),
+              machineSnowDepthCm:
+                outcome.checkpoint.snowDepthCm - natural.snowDepthCm,
+            });
+          }
+        }
+      }
+      // No snowmaking is assumed ahead of time. Grooming over the forecast
+      // follows the caller's default, on SNOWPACK's own nightly schedule.
+      const nightly =
+        managed && groomingDefault === 'nightly'
+          ? {
+              managed: {
+                groomingHourUtc: defaultGroomingHourUtc(resort, target),
+                techHours: new Set<string>(),
+                techMmPerStep: TECH_MM_PER_STEP,
+              },
+            }
+          : {};
+      const predictedHours = new Set(prediction?.hours ?? []);
+      let forecast: PointRunResult;
+      if (managedApplied) {
+        // The window starts at 00:00 UTC, so last night's grooming usually
+        // falls inside it. The first UTC day therefore runs on its own, with
+        // what was observed for it, and the rest runs on from where it ended.
+        const dayEnd = new Date(
+          Math.min(end.getTime(), addHours(target, 24).getTime()),
+        );
+        const today = groomingForDay(
+          resort,
+          point,
+          target,
+          observations,
+          groomingDefault,
+        );
+        const first = await runPoint(this.#runDeps(), {
+          resort,
+          point,
+          from: target,
+          to: dayEnd,
+          initialSno: await readFile(checkpoint.snoPath, 'utf8'),
+          profileIntervalHours: PROFILE_INTERVAL_HOURS,
+          managed: {
+            groomingHourUtc: today?.hourUtc ?? null,
+            techHours: predictedHours,
+            techMmPerStep: TECH_MM_PER_STEP,
+          },
+        });
+        await this.#recordRun(
+          job,
+          resort,
+          point,
+          'forecast',
+          target,
+          dayEnd,
+          first,
+          checkpoint.id,
+        );
+        forecast = first;
+        if (dayEnd < end) {
+          const rest = await runPoint(this.#runDeps(), {
+            resort,
+            point,
+            from: dayEnd,
+            to: end,
+            initialSno: await readFile(first.outputSnoPath, 'utf8'),
+            profileIntervalHours: PROFILE_INTERVAL_HOURS,
+            managed: {
+              groomingHourUtc: nightly.managed?.groomingHourUtc ?? null,
+              techHours: predictedHours,
+              techMmPerStep: TECH_MM_PER_STEP,
+            },
+          });
+          await this.#recordRun(
+            job,
+            resort,
+            point,
+            'forecast',
+            dayEnd,
+            end,
+            rest,
+            checkpoint.id,
+          );
+          forecast = joinRuns(first, rest);
+        }
+        applied = {
+          naturalSnowDepthCm: natural.snowDepthCm,
+          ...managedApplied,
+          forecast: {
+            today: today
+              ? {
+                  status: today.basis,
+                  time: addHours(target, today.hourUtc).toISOString(),
+                  observationKey: today.observationKey,
+                  source: today.source,
+                }
+              : {
+                  status: sawNoGroomer(resort, point, target, observations)
+                    ? 'not_groomed'
+                    : 'none',
+                  time: null,
+                  observationKey: null,
+                  source: null,
+                },
+            laterNights: groomingDefault,
+            snowmaking: snowmakingBlock(prediction),
+          },
+        };
+      } else {
+        forecast = await runPoint(this.#runDeps(), {
+          resort,
+          point,
+          from: target,
+          to: end,
+          initialSno: await readFile(checkpoint.snoPath, 'utf8'),
+          profileIntervalHours: PROFILE_INTERVAL_HOURS,
+        });
+        await this.#recordRun(
+          job,
+          resort,
+          point,
+          'forecast',
+          target,
+          end,
+          forecast,
+          checkpoint.id,
+        );
+      }
       forecastRuns.push(forecast);
       for (const g of forecast.gaps) gaps.push({ pointId: point.id, ...g });
       const fromIso = target.toISOString();
@@ -202,6 +362,7 @@ export class SnowModel {
           runId: forecast.runId,
           names: ['io.ini', ...forecast.files.map((f) => `output/${f}`)],
         },
+        ...(applied ? { managed: applied } : {}),
       });
       progress[point.id] = 'complete';
       await setProgress(job.id, progress);
@@ -219,7 +380,7 @@ export class SnowModel {
       asOf: job.request.asOf,
       window: { from: target.toISOString(), to: end.toISOString() },
       generatedAt: new Date().toISOString(),
-      scenario: 'natural',
+      scenario: managed ? 'managed' : 'natural',
       provenance: {
         weatherProvider: 'open-meteo',
         weatherModel: resort.weather.model,
@@ -232,6 +393,13 @@ export class SnowModel {
               : 'mixed',
         snowpackVersion: this.#deps.snowpackVersion,
         serviceVersion: this.#deps.config.serviceVersion,
+        ...(managed
+          ? {
+              observationsThrough:
+                (await reportedThrough(resort.id))?.toISOString() ?? null,
+              managedRulesVersion: MANAGED_RULES_VERSION,
+            }
+          : {}),
       },
       points,
       dataGaps: gaps,
@@ -258,8 +426,77 @@ export class SnowModel {
     };
   }
 
-  // The newest state at or before `notAfter` in the lineage of the most
-  // recent completed spin-up for this season and configuration.
+  // What the managed chain needs from this model: where a lineage starts,
+  // how to run one day, and how to save the state it ends in.
+  #managedHost(job: Job, resort: Resort) {
+    return {
+      startCheckpoint: async (point: ModelPoint) => {
+        const latest = await this.#latestCheckpoint(
+          resort,
+          point,
+          job.season,
+          new Date(job.request.asOf),
+        );
+        if (!latest) return undefined;
+        return withClient(async (c) => {
+          const { rows } = await c.query(
+            `SELECT id, lineage_id, valid_time, sno_path, snow_depth_cm
+             FROM state_checkpoints
+             WHERE lineage_id = $1 AND point_id = $2 AND scenario = 'natural'
+             ORDER BY valid_time ASC, created_at ASC LIMIT 1`,
+            [latest.lineageId, point.id],
+          );
+          return rows[0] && toCheckpoint(rows[0]);
+        });
+      },
+      runDay: (
+        point: ModelPoint,
+        from: Date,
+        initialSno: string,
+        plan: { grooming: { hourUtc: number } | null; techHours: string[] },
+      ) =>
+        runPoint(this.#runDeps(), {
+          resort,
+          point,
+          from,
+          to: addHours(from, 24),
+          initialSno,
+          profileIntervalHours: null,
+          managed: {
+            groomingHourUtc: plan.grooming?.hourUtc ?? null,
+            techHours: new Set(plan.techHours),
+            techMmPerStep: TECH_MM_PER_STEP,
+          },
+        }),
+      saveManaged: (
+        point: ModelPoint,
+        from: Date,
+        to: Date,
+        run: PointRunResult,
+        input: Checkpoint,
+        inputsHash: string,
+      ) =>
+        this.#saveCheckpoint(
+          job,
+          resort,
+          point,
+          'advance',
+          from,
+          to,
+          run,
+          input,
+          {
+            scenario: 'managed',
+            inputsHash,
+          },
+        ),
+      weather: async (point: ModelPoint, from: Date, to: Date) =>
+        (await this.#deps.openMeteo.hourly(resort, point, from, to)).hours,
+    };
+  }
+
+  // The newest natural state at or before `notAfter` in the lineage of the
+  // most recent completed spin-up for this season and configuration.
   async #latestCheckpoint(
     resort: Resort,
     point: ModelPoint,
@@ -270,7 +507,7 @@ export class SnowModel {
       const { rows } = await c.query(
         `SELECT sc.id, sc.lineage_id, sc.valid_time, sc.sno_path, sc.snow_depth_cm
          FROM state_checkpoints sc
-         WHERE sc.point_id = $3 AND sc.valid_time <= $5
+         WHERE sc.point_id = $3 AND sc.valid_time <= $5 AND sc.scenario = 'natural'
            AND sc.lineage_id = (
              SELECT j.id FROM jobs j
              WHERE j.kind = 'initialize' AND j.status = 'complete'
@@ -316,6 +553,10 @@ export class SnowModel {
     // The state this run started from; null for a spin-up from bare ground,
     // which starts a new lineage named after its job.
     input: Checkpoint | null,
+    chain: { scenario: 'natural' | 'managed'; inputsHash: string | null } = {
+      scenario: 'natural',
+      inputsHash: null,
+    },
   ): Promise<Checkpoint> {
     const lineageId = input?.lineageId ?? job.id;
     const dir = join(
@@ -348,8 +589,8 @@ export class SnowModel {
       await c.query(
         `INSERT INTO state_checkpoints
            (id, lineage_id, resort_id, point_id, season, valid_time, sno_path, produced_by_run_id,
-            resort_config_version, snow_depth_cm)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            resort_config_version, snow_depth_cm, scenario, inputs_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           id,
           lineageId,
@@ -361,6 +602,8 @@ export class SnowModel {
           run.runId,
           resort.configVersion,
           snowDepthCm,
+          chain.scenario,
+          chain.inputsHash,
         ],
       );
     });
@@ -429,6 +672,64 @@ export class SnowModel {
       ],
     );
   }
+}
+
+// A prediction as the result reports it: hours grouped into UTC days.
+function snowmakingBlock(
+  p: SnowmakingPrediction | undefined,
+): NonNullable<PointResult['managed']>['forecast']['snowmaking'] {
+  if (!p) {
+    return {
+      mode: 'none',
+      nights: [],
+      utilisation: null,
+      recentColdHours: 0,
+      recentMachineSnowHours: 0,
+      depthPerHourCm: null,
+      reason: 'not_requested',
+    };
+  }
+  const byDay = new Map<string, string[]>();
+  for (const h of p.hours)
+    byDay.set(h.slice(0, 10), [...(byDay.get(h.slice(0, 10)) ?? []), h]);
+  return {
+    mode: 'predicted',
+    nights: [...byDay.entries()].map(([day, hours]) => ({
+      day,
+      hours: hours.length,
+      from: hours[0]!,
+      to: hours.at(-1)!,
+    })),
+    utilisation: p.utilisation,
+    recentColdHours: p.recentColdHours,
+    recentMachineSnowHours: p.recentMachineSnowHours,
+    depthPerHourCm: p.depthPerHourCm,
+    reason: p.reason,
+  };
+}
+
+// Two back-to-back runs of one point as one: the second starts at the hour
+// the first ended on, so that hour is kept once.
+function joinRuns(a: PointRunResult, b: PointRunResult): PointRunResult {
+  const after = <T extends { time: string }>(rows: T[], last?: T): T[] =>
+    last ? rows.filter((r) => r.time > last.time) : rows;
+  const forcing = [...a.forcing, ...after(b.forcing, a.forcing.at(-1))];
+  return {
+    ...a,
+    forcing,
+    met: [...a.met, ...after(b.met, a.met.at(-1))],
+    profiles: [...a.profiles, ...after(b.profiles, a.profiles.at(-1))],
+    gaps: findGaps(forcing),
+    weather: {
+      ...a.weather,
+      retrievedAt:
+        a.weather.retrievedAt < b.weather.retrievedAt
+          ? a.weather.retrievedAt
+          : b.weather.retrievedAt,
+    },
+    outputSnoPath: b.outputSnoPath,
+    durationMs: a.durationMs + b.durationMs,
+  };
 }
 
 function toCheckpoint(r: {

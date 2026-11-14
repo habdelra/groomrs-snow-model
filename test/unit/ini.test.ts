@@ -64,3 +64,41 @@ weather: { provider: open-meteo, model: ecmwf_ifs025 }
   assert.match(sno, /ProfileDate {6}= 2025-10-02T00:00/);
   assert.match(sno, /nSnowLayerData {3}= 0/);
 });
+
+test('a natural run renders exactly the template', () => {
+  const params = {
+    station: 'BASE',
+    inputDir: '/i',
+    outputDir: '/o',
+    profileIntervalHours: null,
+  };
+  const ini = renderIni(readIniTemplate(), params);
+  assert.doesNotMatch(ini, /TechSnow|PSUM_TECH/);
+  // A managed run with nothing to apply adds nothing either.
+  assert.equal(
+    renderIni(readIniTemplate(), {
+      ...params,
+      managed: { groomingHourUtc: null, technicalSnow: false },
+    }),
+    ini,
+  );
+});
+
+test('a managed run adds grooming and a resampling rule for machine snow', () => {
+  const ini = renderIni(readIniTemplate(), {
+    station: 'BASE',
+    inputDir: '/i',
+    outputDir: '/o',
+    profileIntervalHours: null,
+    managed: { groomingHourUtc: 11, technicalSnow: true },
+  });
+  assert.match(ini, /\[TechSnow\]\nSNOW_GROOMING = true/);
+  assert.match(ini, /GROOMING_HOUR = 11/);
+  // The whole year: which days are groomed is decided per run.
+  assert.match(ini, /GROOMING_WEEK_START = 1\nGROOMING_WEEK_END = 53/);
+  assert.match(ini, /GROOMING_DEPTH_START = 0\.1/);
+  assert.match(
+    ini,
+    /\[Interpolations1D\]\nPSUM_TECH::resample = nearest\nPSUM_TECH::nearest::extrapolate = true/,
+  );
+});

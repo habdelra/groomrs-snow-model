@@ -7,6 +7,7 @@ import type { Config } from '../config.ts';
 import {
   contractJsonSchema,
   InitializeRequest,
+  ObservationBatchRequest,
   RefreshRequest,
   SCHEMA_VERSION,
   type ResultDocument,
@@ -19,6 +20,16 @@ import {
   type Job,
   type JobKind,
 } from '../jobs/queue.ts';
+import {
+  BatchConflict,
+  effectiveObservations,
+  hasObservations,
+  lastChangedAt,
+  latestByKind,
+  observationView,
+  reportedThrough,
+  storeBatch,
+} from '../observations/store.ts';
 import type { Resort, ResortRegistry } from '../resorts/registry.ts';
 import {
   addHours,
@@ -203,7 +214,14 @@ export async function registerRoutes(app: FastifyInstance, deps: ApiDeps) {
     season: string,
     idempotencyKey: string,
     input: unknown,
-    request: { asOf: string; spinupDays?: number; horizonHours?: number },
+    request: {
+      asOf: string;
+      spinupDays?: number;
+      horizonHours?: number;
+      scenario?: 'natural' | 'managed';
+      groomingDefault?: 'none' | 'nightly';
+      snowmakingForecast?: 'none' | 'predicted';
+    },
   ) {
     try {
       const { job, created } = await createJob({
@@ -303,17 +321,136 @@ export async function registerRoutes(app: FastifyInstance, deps: ApiDeps) {
       const asOf = resolveAsOf(parsed.data.asOf);
       if (typeof asOf === 'string')
         return problem(reply, 400, 'bad_request', asOf);
+      const season = seasonFor(resort.hemisphere, asOf);
+      // Managed once the resort has observations for the season, unless the
+      // caller says otherwise. Resolved here so a retry does the same work.
+      const scenario =
+        parsed.data.scenario ??
+        ((await hasObservations(resort.id, season)) ? 'managed' : 'natural');
       return enqueue(
         reply,
         'refresh',
         resort,
-        seasonFor(resort.hemisphere, asOf),
+        season,
         parsed.data.idempotencyKey,
         req.body,
-        { asOf: asOf.toISOString(), horizonHours: parsed.data.horizonHours },
+        {
+          asOf: asOf.toISOString(),
+          horizonHours: parsed.data.horizonHours,
+          scenario,
+          groomingDefault: parsed.data.groomingDefault ?? 'none',
+          snowmakingForecast: parsed.data.snowmakingForecast ?? 'none',
+        },
       );
     },
   );
+
+  // --- Observations (docs/observations.md) -------------------------------
+
+  // Stores new and amended observations. No model runs; the next refresh
+  // applies them.
+  app.post<{ Params: { id: string } }>(
+    '/v1/resorts/:id/observations',
+    async (req, reply) => {
+      const resort = registry.get(req.params.id);
+      if (!resort)
+        return problem(reply, 404, 'not_found', `no resort ${req.params.id}`);
+      const parsed = ObservationBatchRequest.safeParse(req.body ?? {});
+      if (!parsed.success)
+        return problem(
+          reply,
+          400,
+          'bad_request',
+          z.prettifyError(parsed.error),
+        );
+      const keys = new Set<string>();
+      for (const o of parsed.data.observations) {
+        if (keys.has(o.key))
+          return problem(
+            reply,
+            400,
+            'bad_request',
+            `observation key ${o.key} appears twice in the batch`,
+          );
+        keys.add(o.key);
+        if (new Date(o.validTo ?? o.validFrom) < new Date(o.validFrom))
+          return problem(
+            reply,
+            400,
+            'bad_request',
+            `observation ${o.key}: validTo is before validFrom`,
+          );
+      }
+      try {
+        const { response, created } = await storeBatch(resort, parsed.data);
+        return reply.code(created ? 201 : 200).send(response);
+      } catch (err) {
+        if (err instanceof BatchConflict)
+          return problem(reply, 409, 'idempotency_conflict', err.message);
+        throw err;
+      }
+    },
+  );
+
+  // The last observation received per kind, so the caller can send only
+  // what is newer. A kind with nothing stored is null.
+  app.get<{ Params: { id: string } }>(
+    '/v1/resorts/:id/observations/latest',
+    async (req, reply) => {
+      const resort = registry.get(req.params.id);
+      if (!resort)
+        return problem(reply, 404, 'not_found', `no resort ${req.params.id}`);
+      const [{ latest, counts }, through, changed] = await Promise.all([
+        latestByKind(resort.id),
+        reportedThrough(resort.id),
+        lastChangedAt(resort.id),
+      ]);
+      return {
+        resort: resort.id,
+        through: through?.toISOString() ?? null,
+        // When a record was last stored or amended.
+        lastChangedAt: changed?.toISOString() ?? null,
+        latest: {
+          grooming: latest.grooming && observationView(latest.grooming),
+          snowmaking: latest.snowmaking && observationView(latest.snowmaking),
+          base_depth: latest.base_depth && observationView(latest.base_depth),
+        },
+        counts,
+      };
+    },
+  );
+
+  // What is stored, for audit. `revisions=all` includes superseded revisions.
+  app.get<{
+    Params: { id: string };
+    Querystring: {
+      kind?: string;
+      from?: string;
+      to?: string;
+      revisions?: string;
+    };
+  }>('/v1/resorts/:id/observations', async (req, reply) => {
+    const resort = registry.get(req.params.id);
+    if (!resort)
+      return problem(reply, 404, 'not_found', `no resort ${req.params.id}`);
+    const query = z
+      .object({
+        kind: z.enum(['grooming', 'snowmaking', 'base_depth']).optional(),
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        revisions: z.enum(['current', 'all']).optional(),
+      })
+      .safeParse(req.query);
+    if (!query.success)
+      return problem(reply, 400, 'bad_request', z.prettifyError(query.error));
+    const rows = await effectiveObservations(resort.id, {
+      ...(query.data.kind ? { kind: query.data.kind } : {}),
+      ...(query.data.from ? { from: new Date(query.data.from) } : {}),
+      ...(query.data.to ? { to: new Date(query.data.to) } : {}),
+      allRevisions: query.data.revisions === 'all',
+    });
+    return { resort: resort.id, observations: rows.map(observationView) };
+  });
 
   app.get<{ Params: { id: string } }>('/v1/jobs/:id', async (req, reply) => {
     const job = z.string().uuid().safeParse(req.params.id).success

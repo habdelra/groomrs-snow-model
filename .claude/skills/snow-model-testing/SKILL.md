@@ -37,6 +37,9 @@ The Open-Meteo client is tested against an injected `fetchImpl` stand-in that an
 - **Idempotency keys include `RUN_NONCE`** (`test/helpers/api.ts`), so reruns against the same database create fresh jobs and a fresh lineage. The refresh test then sees its own lineage and must run `advance` + `forecast` per point. Before lineages existed, a rerun reused a 3 Feb checkpoint left by an earlier run and skipped `advance`.
 - **"Current season" uses El Colorado**: its season is the calendar year, so `now` always falls inside one. It asserts completeness, not snow (the snowpack can be gone late in the year).
 - Tests read Postgres directly through `dbQuery` (PG* from `.mise.toml`) to check what was recorded, such as no new `model_runs` on an idempotent retry.
+- **Observations can't be deleted, so the observations suite uses fixed observation keys** (`it/...`). Its first batch sends the whole starting set, which amends back whatever an earlier run left changed. Only the batch idempotency keys carry `RUN_NONCE`. Keep any new observation in that starting set, or reruns will see leftovers.
+- **State `scenario: 'natural'` in a refresh that must be natural.** The default becomes `managed` once the database holds observations for that resort and season, which the observations suite leaves behind for Blue Mountain 2025/26.
+- The observations suite initializes its own lineage and refreshes straight after, because the managed chain builds on the most recent completed spin-up.
 - Integration files run serially (`--test-concurrency=1`). The service also runs jobs one at a time.
 - The integration tests and `docs/api/` describe the same behaviour. When a test pins down something new a client can observe (a status code, an error reason, a series length), check the docs say the same (see the `api-docs` skill).
 

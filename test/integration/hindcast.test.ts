@@ -125,6 +125,10 @@ for (const { resortId, points } of CASES) {
               idempotencyKey: `it-${RUN_NONCE}-${resortId}-refresh`,
               asOf: '2026-02-03T06:00:00Z',
               horizonHours: 48,
+              // Stated, because the default turns to 'managed' once the
+              // database holds observations for the season (the
+              // observations suite leaves some behind).
+              scenario: 'natural',
             },
           },
         );

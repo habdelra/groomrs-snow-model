@@ -1,6 +1,8 @@
 # API overview
 
-The snow-model service models the natural snowpack at a ski resort's base, mid and summit points. It pulls hourly weather from [Open-Meteo](https://open-meteo.com/en/docs), runs [SNOWPACK](https://snowpack.slf.ch/), the snow-cover model from the WSL Institute for Snow and Avalanche Research SLF, and returns **raw physical quantities**: weather forcing, snow depth, snow water equivalent, energy fluxes and layer-by-layer snow profiles.
+The snow-model service models the snowpack at a ski resort's base, mid and summit points. It pulls hourly weather from [Open-Meteo](https://open-meteo.com/en/docs), runs [SNOWPACK](https://snowpack.slf.ch/), the snow-cover model from the WSL Institute for Snow and Avalanche Research SLF, and returns **raw physical quantities**: weather forcing, snow depth, snow water equivalent, energy fluxes and layer-by-layer snow profiles.
+
+It models the **natural** snowpack from weather alone, and, once you send it grooming, snowmaking and base-depth observations, a **managed** snowpack that adds the grooming and machine snow they imply.
 
 It does not interpret them. There are no condition labels, carving scores or confidence values in any response; deriving those is the client's job.
 
@@ -89,6 +91,16 @@ The model has to build up a season's snowpack from bare ground before it can say
 
 Both are **asynchronous jobs**: you `POST` to create one, then poll `GET /v1/jobs/:id` until it finishes. See [Jobs](jobs.md).
 
+### Observations and the managed snowpack
+
+A third kind of call, **observations**, feeds the managed snowpack:
+
+1. **Send observations** ([`POST /v1/resorts/:id/observations`](endpoints.md#post-v1resortsidobservations)): grooming seen on webcams, snowmaking seen, the base depth the resort reports, and manual entries, including "nothing seen" records. The service stores them, with revisions when you amend one, and runs nothing. This call is synchronous.
+2. **Ask what it holds** ([`GET /v1/resorts/:id/observations/latest`](endpoints.md#get-v1resortsidobservationslatest)) before the next batch, and send only what is newer.
+3. **Refresh.** Once a resort has observations for a season, refreshes in that season are **managed** unless the request says `"scenario": "natural"`. A managed refresh applies every stored observation, day by day from the season's spin-up state, and forecasts from the result. Each point of a managed result carries a [`managed`](result-document.md#managed) block saying what was applied, with the natural depth beside the managed one.
+
+Observations dated before the season's spin-up state are stored but not applied. The concepts, and the rules that turn observations into grooming and machine snow, are in [Observations](../observations.md).
+
 ## End-to-end example
 
 ```sh
@@ -122,6 +134,37 @@ curl -s "$BASE/v1/results/69a02752-…?profileDepthCm=20"
 ```
 
 A daily pipeline normally initializes each season once, then calls refresh once per run with an idempotency key derived from the job kind, resort and date (for example `refresh/vail-co/2026-02-03`), so retries never duplicate work.
+
+### With observations
+
+The same pipeline with observations, at Blue Mountain (the ids are from the live stack and run through the other documents):
+
+```sh
+# 1. What does the service already hold?
+curl -s $BASE/v1/resorts/blue-mountain-pa/observations/latest
+# → {"through":"2026-02-20T12:00:00.000Z","lastChangedAt":"…","latest":{…},"counts":{…}}
+
+# 2. Send everything newer, with what you have sent up to.
+curl -s -XPOST $BASE/v1/resorts/blue-mountain-pa/observations \
+  -H 'content-type: application/json' \
+  -d '{"idempotencyKey":"docs/blue-mountain-pa/obs/2026-02-21T12:00Z","through":"2026-02-21T12:00:00Z","observations":[…]}'
+# → 201 {"batchId":"2e650e03-…","counts":{"accepted":3,"amended":0,"unchanged":0},"earliestAffected":"2026-02-21T00:30:00.000Z",…}
+# (A second batch with a staff amendment followed, through 2026-02-21T15:00:00Z.)
+
+# 3. Refresh. The resort has observations for 2025/26, so this is managed.
+curl -s -XPOST $BASE/v1/resorts/blue-mountain-pa/refresh \
+  -H 'content-type: application/json' \
+  -d '{"idempotencyKey":"docs/refresh/blue-mountain-pa/2026-02-20/managed","asOf":"2026-02-20T06:00:00Z","horizonHours":48,"snowmakingForecast":"predicted"}'
+# → 202 {"jobId":"3eb2ecd0-…",…}
+
+# 4. Poll, then fetch the result.
+curl -s $BASE/v1/jobs/3eb2ecd0-…
+# → {"status":"complete","resultId":"42d0d4c8-…",…}
+curl -s "$BASE/v1/results/42d0d4c8-…?profileDepthCm=20"
+# → {"scenario":"managed","provenance":{…,"observationsThrough":"2026-02-21T15:00:00.000Z","managedRulesVersion":"managed/1"},"points":[{…,"managed":{…}}],…}
+```
+
+Observations sent after a refresh job was created don't reach it, and a retry with the same key returns the same job. Refresh with a new key to apply them (see [Idempotency](jobs.md#idempotency)).
 
 ## Data attribution
 

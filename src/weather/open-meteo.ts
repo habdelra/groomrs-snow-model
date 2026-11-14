@@ -236,6 +236,15 @@ function num(v: number | string | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+// An amount that can't go below zero: precipitation, rain, snowfall and
+// shortwave radiation. Open-Meteo's forecast occasionally carries a small
+// negative value (−0.1 mm of precipitation has been seen), which would reach
+// the forcing as negative water.
+function amount(v: number | string | null | undefined): number | null {
+  const n = num(v);
+  return n == null ? null : Math.max(0, n);
+}
+
 export function normalize(response: OpenMeteoResponse): HourlyWeather[] {
   const h = response.hourly;
   return h.time.map((t, i) => ({
@@ -244,10 +253,10 @@ export function normalize(response: OpenMeteoResponse): HourlyWeather[] {
     relativeHumidityPct: num(h.relative_humidity_2m?.[i]),
     windSpeedMs: num(h.wind_speed_10m?.[i]),
     windDirectionDeg: num(h.wind_direction_10m?.[i]),
-    shortwaveWm2: num(h.shortwave_radiation?.[i]),
-    precipitationMm: num(h.precipitation?.[i]),
-    rainMm: num(h.rain?.[i]),
-    snowfallCm: num(h.snowfall?.[i]),
+    shortwaveWm2: amount(h.shortwave_radiation?.[i]),
+    precipitationMm: amount(h.precipitation?.[i]),
+    rainMm: amount(h.rain?.[i]),
+    snowfallCm: amount(h.snowfall?.[i]),
     cloudCoverPct: num(h.cloud_cover?.[i]),
     surfacePressureHpa: num(h.surface_pressure?.[i]),
   }));

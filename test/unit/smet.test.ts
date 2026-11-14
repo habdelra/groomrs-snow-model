@@ -77,3 +77,22 @@ test('toSmet writes SNOWPACK SI units and round-trips through the reader', () =>
   assert.deepEqual(smetColumn(smet, 'PSUM_PH'), [null, 0]);
   assert.deepEqual(smetColumn(smet, 'CLD'), [4, 4]);
 });
+
+test('machine snow adds a PSUM_TECH column, on for the listed hours only', () => {
+  const hours = [
+    hour({ time: '2026-01-16T00:00:00.000Z' }),
+    hour({ time: '2026-01-16T01:00:00.000Z' }),
+  ];
+  const plain = toSmet(resort, point, hours);
+  assert.doesNotMatch(plain, /PSUM_TECH/);
+  const smet = parseSmet(
+    toSmet(resort, point, hours, {
+      hours: new Set(['2026-01-16T01:00:00.000Z']),
+      mmPerStep: 1,
+    }),
+  );
+  assert.equal(smet.fields.at(-1), 'PSUM_TECH');
+  assert.deepEqual(smetColumn(smet, 'PSUM_TECH'), [0, 1]);
+  // The weather columns are untouched.
+  assert.deepEqual(smetColumn(smet, 'TA'), smetColumn(parseSmet(plain), 'TA'));
+});
