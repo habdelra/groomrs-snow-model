@@ -787,18 +787,26 @@ Returns the most recently created result document for a resort, across all seaso
 
 ## `GET /v1/runs/:runId/files/*path`
 
-Downloads a native file from a single SNOWPACK run, for debugging or for tools that read SNOWPACK formats directly. The formats are documented by SLF in [SNOWPACK data formats](https://snowpack.slf.ch/doc-release/html/snowpackio.html). Each point in a result document lists its run's id and file names under `files`:
+Downloads a native file from a single SNOWPACK run, for debugging or for tools that read SNOWPACK formats directly. The formats are documented by SLF in [SNOWPACK data formats](https://snowpack.slf.ch/doc-release/html/snowpackio.html). Each point in a result document lists its runs' ids and file names under [`files`](result-document.md#files):
 
 ```json
 "files": {
   "runId": "f5e683d4-3086-402f-8bea-5b85ac617847",
-  "names": ["io.ini", "output/BASE_run.haz", "output/BASE_run.ini", "output/BASE_run.pro", "output/BASE_run.smet", "output/BASE_run.sno"]
+  "names": ["io.ini", "output/BASE_run.haz", "output/BASE_run.ini", "output/BASE_run.pro", "output/BASE_run.smet", "output/BASE_run.sno"],
+  "runs": [
+    {
+      "runId": "f5e683d4-3086-402f-8bea-5b85ac617847",
+      "from": "2026-02-03T00:00:00.000Z",
+      "to": "2026-02-05T00:00:00.000Z",
+      "names": ["io.ini", "output/BASE_run.haz", "output/BASE_run.ini", "output/BASE_run.pro", "output/BASE_run.smet", "output/BASE_run.sno"]
+    }
+  ]
 }
 ```
 
 Any file in the run directory can be fetched, including the inputs under `input/` (for example `input/BASE.smet`, the forcing file).
 
-A managed result's forecast is two SNOWPACK runs per point: the window's first UTC day, then the rest (see [Jobs: managed refreshes](jobs.md#managed-refreshes)). `files` names only the **first** of them, so its `.smet` and `.pro` end at `window.from` + 24 hours, while the result's `met` and `profiles` cover the whole window.
+A managed result's forecast is two SNOWPACK runs per point: the window's first UTC day, then the rest (see [Jobs: managed refreshes](jobs.md#managed-refreshes)). `files.runs` lists both, each with the span it covers; each run's `.smet` and `.pro` cover only its own span, while the result's `met` and `profiles` join them over the whole window. `files.runId` and `files.names` are the first run.
 
 ```sh
 curl -s http://127.0.0.1:8090/v1/runs/f5e683d4-3086-402f-8bea-5b85ac617847/files/output/BASE_run.pro

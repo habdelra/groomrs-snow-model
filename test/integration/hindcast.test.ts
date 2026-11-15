@@ -38,7 +38,11 @@ interface ResultDoc {
       time: string;
       layers: Array<{ depthCm: number; densityKgM3: number | null }>;
     }>;
-    files: { runId: string; names: string[] };
+    files: {
+      runId: string;
+      names: string[];
+      runs: Array<{ runId: string; from: string; to: string }>;
+    };
   }>;
   dataGaps: unknown[];
 }
@@ -175,6 +179,10 @@ for (const { resortId, points } of CASES) {
             p.met.every((h) => h.snowDepthCm !== null && h.snowDepthCm >= 0),
           );
           assert.equal(p.profiles.length, 17);
+          assert.deepEqual(
+            p.files.runs.map((r) => [r.runId, r.from, r.to]),
+            [[p.files.runId, doc.window.from, doc.window.to]],
+          );
         }
         const summit = doc.points.find((p) => p.id === 'summit')!;
         assert.ok(
