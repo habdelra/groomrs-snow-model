@@ -75,6 +75,10 @@ curl -s -XPOST localhost:8090/v1/resorts/<id>/seasons/<season>/initialize \
 
 The service only models the resort. Riders see it once the Boxel realm has its `Resort` card, its feed and observation files, and an updated sitemap. The checklist is in the "Onboarding a resort" section of the `habdelra/groomrs` README.
 
+## 5. Then onboard it in Boxel
+
+A resort the service models still needs its Resort card, feed files, smaller hero photos and an entry in the site's sitemap before riders can find it. The steps are in the "Onboarding a resort" section of the `habdelra/groomrs` README.
+
 ## Changing an existing resort
 
 Any change to the YAML, or to `config/snowpack/base.ini.tmpl`, changes the resort's `configVersion`. Existing checkpoints belong to the old version, so refresh is `blocked` with `not_initialized` until the season is initialized again. This is deliberate: results are never computed from state built under a different configuration. Mention the re-initialization in the PR.
