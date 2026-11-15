@@ -234,6 +234,8 @@ export class SnowModel {
           : {};
       const predictedHours = new Set(prediction?.hours ?? []);
       let forecast: PointRunResult;
+      // Every SNOWPACK execution behind the forecast, in time order.
+      let runs: RunFiles[];
       if (managedApplied) {
         // The window starts at 00:00 UTC, so last night's grooming usually
         // falls inside it. The first UTC day therefore runs on its own, with
@@ -272,6 +274,7 @@ export class SnowModel {
           checkpoint.id,
         );
         forecast = first;
+        runs = [runFiles(first, target, dayEnd)];
         if (dayEnd < end) {
           const rest = await runPoint(this.#runDeps(), {
             resort,
@@ -297,6 +300,7 @@ export class SnowModel {
             checkpoint.id,
           );
           forecast = joinRuns(first, rest);
+          runs.push(runFiles(rest, dayEnd, end));
         }
         applied = {
           naturalSnowDepthCm: natural.snowDepthCm,
@@ -340,6 +344,7 @@ export class SnowModel {
           forecast,
           checkpoint.id,
         );
+        runs = [runFiles(forecast, target, end)];
       }
       forecastRuns.push(forecast);
       for (const g of forecast.gaps) gaps.push({ pointId: point.id, ...g });
@@ -359,8 +364,9 @@ export class SnowModel {
           (p) => p.time >= fromIso && p.time <= toIso,
         ),
         files: {
-          runId: forecast.runId,
-          names: ['io.ini', ...forecast.files.map((f) => `output/${f}`)],
+          runId: runs[0]!.runId,
+          names: runs[0]!.names,
+          runs,
         },
         ...(applied ? { managed: applied } : {}),
       });
@@ -705,6 +711,18 @@ function snowmakingBlock(
     recentMachineSnowHours: p.recentMachineSnowHours,
     depthPerHourCm: p.depthPerHourCm,
     reason: p.reason,
+  };
+}
+
+type RunFiles = PointResult['files']['runs'][number];
+
+// One run's id, the span it simulated and its native files.
+function runFiles(run: PointRunResult, from: Date, to: Date): RunFiles {
+  return {
+    runId: run.runId,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    names: ['io.ini', ...run.files.map((f) => `output/${f}`)],
   };
 }
 

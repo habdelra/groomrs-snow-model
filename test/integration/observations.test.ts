@@ -51,8 +51,16 @@ interface ManagedPoint {
   }>;
 }
 
+interface RunFiles {
+  runId: string;
+  from: string;
+  to: string;
+  names: string[];
+}
+
 interface ResultDoc {
   scenario: string;
+  window: { from: string; to: string };
   provenance: {
     observationsThrough?: string | null;
     managedRulesVersion?: string;
@@ -64,8 +72,15 @@ interface ResultDoc {
     profiles: Array<{
       layers: Array<{ grainTypePrimary: string | null; densityKgM3: number }>;
     }>;
+    files: { runId: string; names: string[]; runs: RunFiles[] };
     managed?: ManagedPoint;
   }>;
+}
+
+// The last timestamp in a SMET file's data section.
+function lastSmetTime(smet: string): string {
+  const rows = smet.slice(smet.indexOf('[DATA]')).trim().split('\n');
+  return rows.at(-1)!.split(/\s+/)[0]!;
 }
 
 interface BatchResponse {
@@ -394,6 +409,34 @@ describe('observations and the managed snowpack', () => {
             prof.layers.some((l) => l.grainTypePrimary === 'MM'),
           ),
         );
+
+        // The forecast is two runs, the first UTC day and the rest, and
+        // `files` names both, each with its own span.
+        const { runs } = p.files;
+        assert.deepEqual(
+          runs.map((r) => [r.from, r.to]),
+          [
+            [doc.window.from, '2026-02-06T00:00:00.000Z'],
+            ['2026-02-06T00:00:00.000Z', doc.window.to],
+          ],
+        );
+        assert.notEqual(runs[0]!.runId, runs[1]!.runId);
+        assert.equal(p.files.runId, runs[0]!.runId);
+        assert.deepEqual(p.files.names, runs[0]!.names);
+        const POINT = p.id.toUpperCase();
+        for (const run of runs) {
+          assert.ok(run.names.includes(`output/${POINT}_run.smet`));
+          const smet = await api<string>(
+            `/v1/runs/${run.runId}/files/output/${POINT}_run.smet`,
+          );
+          assert.equal(smet.status, 200);
+          // SMET times are UTC (tz = 0), written without a zone.
+          assert.equal(
+            lastSmetTime(smet.body).slice(0, 16),
+            run.to.slice(0, 16),
+            `${p.id}: run ${run.runId} ends at ${run.to}`,
+          );
+        }
       }
 
       const summit = doc.points.find((p) => p.id === 'summit')!.managed!;
@@ -453,6 +496,15 @@ describe('observations and the managed snowpack', () => {
       assert.equal(doc.scenario, 'natural');
       for (const p of doc.points) {
         assert.equal(p.managed, undefined);
+        // A natural forecast is one run over the whole window.
+        assert.deepEqual(p.files.runs, [
+          {
+            runId: p.files.runId,
+            from: doc.window.from,
+            to: doc.window.to,
+            names: p.files.names,
+          },
+        ]);
         const managed = reused.points.find((q) => q.id === p.id)!;
         assert.equal(p.state.snowDepthCm, managed.managed!.naturalSnowDepthCm);
       }

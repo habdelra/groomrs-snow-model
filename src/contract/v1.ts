@@ -296,9 +296,20 @@ export const PointResult = z.object({
   forcing: z.array(ForcingHour),
   met: z.array(MetHour),
   profiles: z.array(Profile),
+  // `runId` and `names` are the first run; `runs` lists every run behind
+  // the forecast, in time order (one on a natural result, one per span on a
+  // managed one).
   files: z.object({
     runId: z.string().uuid(),
     names: z.array(z.string()),
+    runs: z.array(
+      z.object({
+        runId: z.string().uuid(),
+        from: isoTime,
+        to: isoTime,
+        names: z.array(z.string()),
+      }),
+    ),
   }),
   // Present on a managed result: what was applied at this point.
   managed: ManagedPoint.optional(),

@@ -257,10 +257,24 @@ Clients that group by the main ICSSG class can take the first two letters of the
 
 ### `files`
 
-| Field   | Type          | Description                                                                                                                                         |
-| ------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `runId` | string (UUID) | The point's forecast run. On a managed result, the run for the window's first UTC day only; see [run files](endpoints.md#get-v1runsrunidfilespath). |
-| `names` | string[]      | Paths of its native files, downloadable from [`GET /v1/runs/:runId/files/*path`](endpoints.md#get-v1runsrunidfilespath).                            |
+The SNOWPACK runs behind the point's forecast. A natural result has one run. A managed result has two: the window's first UTC day, then the rest of the window (see [`managed.forecast`](#forecast)). A one-day window has only the first.
+
+| Field   | Type          | Description                                                                                                                      |
+| ------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `runId` | string (UUID) | The first run: the whole forecast on a natural result, the window's first UTC day on a managed one. The same as `runs[0].runId`. |
+| `names` | string[]      | The first run's native files. The same as `runs[0].names`.                                                                       |
+| `runs`  | array         | Every run, in time order. See below.                                                                                             |
+
+Each entry of `runs`:
+
+| Field   | Type          | Description                                                                                                                                                                                       |
+| ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runId` | string (UUID) | The run's id.                                                                                                                                                                                     |
+| `from`  | string        | UTC. Where the run starts: the time of its initial state. The first run starts at `window.from`, and each later one at the previous one's `to`.                                                   |
+| `to`    | string        | UTC. Where the run ends. The last run ends at `window.to`.                                                                                                                                        |
+| `names` | string[]      | Paths of the run's native files, downloadable from [`GET /v1/runs/:runId/files/*path`](endpoints.md#get-v1runsrunidfilespath). Its `.smet` and `.pro` cover `from` to `to`, not the whole window. |
+
+Results written before `runs` was added don't have it; their `runId` and `names` are the first run as above.
 
 ### `managed`
 
